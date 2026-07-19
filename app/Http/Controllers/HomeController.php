@@ -6,8 +6,6 @@ use App\Models\CaregiverProfile;
 use App\Models\NewsPost;
 use App\Models\Order;
 use App\Models\Service;
-use App\Models\User;
-use Illuminate\Http\RedirectResponse;
 
 class HomeController extends Controller
 {
@@ -51,19 +49,5 @@ class HomeController extends Controller
             'profile' => $caregiverProfile,
             'reviews' => $caregiverProfile->user->receivedReviews->where('subject_role', 'caregiver')->sortByDesc('published_at'),
         ]);
-    }
-
-    public function demoCaregiver(): RedirectResponse
-    {
-        $user = User::where('role', 'caregiver')->orderBy('id')->firstOrFail();
-
-        return redirect()->route('dashboard.caregiver', $user);
-    }
-
-    public function demoClient(): RedirectResponse
-    {
-        $user = User::where('role', 'client')->orderBy('id')->firstOrFail();
-
-        return redirect()->route('dashboard.client', $user);
     }
 }

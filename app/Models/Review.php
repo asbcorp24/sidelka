@@ -10,6 +10,17 @@ class Review extends Model
 {
     use HasFactory;
 
+    protected static function booted(): void
+    {
+        static::saving(function (Review $review) {
+            $review->loadMissing('order');
+
+            if (! $review->order || $review->order->status !== 'completed') {
+                throw new \RuntimeException('Отзыв можно оставить только после завершения заказа.');
+            }
+        });
+    }
+
     protected $fillable = [
         'order_id',
         'author_id',

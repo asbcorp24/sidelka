@@ -9,6 +9,14 @@
             <div class="card-soft p-4 p-lg-5">
                 <div class="text-uppercase small text-secondary mb-2">Регистрация</div>
                 <h1 class="section-title mb-3">Создать аккаунт</h1>
+
+                <div class="d-grid gap-2 mb-4">
+                    <a href="{{ route('social.redirect', 'vk') }}" class="btn btn-outline-dark rounded-pill">Продолжить через ВКонтакте</a>
+                    <a href="{{ route('social.redirect', 'yandex') }}" class="btn btn-outline-dark rounded-pill">Продолжить через Яндекс</a>
+                </div>
+
+                <div class="text-center text-secondary small mb-3">или заполните форму вручную</div>
+
                 <form action="{{ route('register.store') }}" method="POST" class="row g-3">
                     @csrf
                     <div class="col-md-6">

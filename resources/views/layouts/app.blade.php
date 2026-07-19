@@ -91,27 +91,6 @@
             font-weight: 800;
         }
 
-        .timeline {
-            border-left: 2px solid rgba(31, 111, 120, 0.12);
-            padding-left: 1rem;
-        }
-
-        .timeline-item {
-            position: relative;
-            padding-bottom: 1rem;
-        }
-
-        .timeline-item::before {
-            content: "";
-            position: absolute;
-            left: -1.35rem;
-            top: 0.35rem;
-            width: 0.7rem;
-            height: 0.7rem;
-            border-radius: 50%;
-            background: var(--brand);
-        }
-
         .chat-bubble {
             border-radius: 18px;
             padding: 1rem 1.1rem;
@@ -195,8 +174,8 @@
 
     <footer class="container py-4 border-top">
         <div class="d-flex flex-column flex-lg-row justify-content-between gap-2">
-            <span>Маркетплейс сиделок с безопасной оплатой, календарем смен и отзывами.</span>
-            <span>Laravel 9 + Bootstrap + готовая основа под API для Flutter.</span>
+            <span>Сервис подбора сиделок с безопасной оплатой, календарем смен и отзывами.</span>
+            <span>Подходит для разовых, срочных и постоянных заказов с прозрачными условиями для клиента и сиделки.</span>
         </div>
     </footer>
 

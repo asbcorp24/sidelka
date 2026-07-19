@@ -39,7 +39,10 @@
                 <div>
                     <h2 class="h5">Доступность</h2>
                     @foreach($profile->availabilitySlots as $slot)
-                        <span class="availability-chip">{{ ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][$slot->weekday] }} {{ substr($slot->starts_at, 0, 5) }}-{{ substr($slot->ends_at, 0, 5) }}</span>
+                        <span class="availability-chip">
+                            {{ $slot->specific_date ? $slot->specific_date->format('d.m.Y') : ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'][$slot->weekday] }}
+                            {{ substr($slot->starts_at, 0, 5) }}-{{ substr($slot->ends_at, 0, 5) }}
+                        </span>
                     @endforeach
                 </div>
             </div>
@@ -68,18 +71,29 @@
             <div class="card-soft p-4 mb-4">
                 <h2 class="h4">Что есть в кабинете сиделки</h2>
                 <ul class="mb-0">
-                    <li>календарь доступности по дням и часам</li>
-                    <li>цены за час, день и ночную смену</li>
-                    <li>чек-лист документов и верификации</li>
-                    <li>заявки, подобранные по навыкам и ставке</li>
-                    <li>чат с клиентом после отклика</li>
-                    <li>кошелек и история выплат</li>
+                    <li>календарь доступности по реальным датам и часам</li>
+                    <li>цены за час и смену</li>
+                    <li>документы, договор и выплаты</li>
+                    <li>входящие приглашения на заказы</li>
+                    <li>личный чат с клиентом после подтверждения</li>
+                    <li>отзывы и история завершенных заказов</li>
                 </ul>
             </div>
             <div class="card-soft p-4">
-                <h2 class="h4">Следующий шаг</h2>
-                <p class="text-secondary">Позже сюда можно подключить реальную регистрацию, загрузку документов, уведомления и оплату через ЮKassa или другой шлюз.</p>
-                <a href="{{ route('dashboard.caregiver', $profile->user) }}" class="btn btn-dark rounded-pill">Открыть кабинет сиделки</a>
+                <h2 class="h4">Заинтересовала сиделка?</h2>
+                <p class="text-secondary">Если анкета подходит, переходите к оформлению заказа. На следующей странице вы укажете даты, время, услуги и условия ухода, а заказ сразу уйдет этой сиделке.</p>
+                <div class="d-grid gap-2">
+                    <a href="{{ route('caregivers.index') }}" class="btn btn-dark rounded-pill">Вернуться в каталог</a>
+                    @auth
+                        @if(auth()->user()->isClient())
+                            <a href="{{ route('client.orders.create_for_caregiver', $profile) }}" class="btn btn-outline-dark rounded-pill">Оформить заказ</a>
+                        @else
+                            <a href="{{ route('register') }}" class="btn btn-outline-dark rounded-pill">Зарегистрироваться как клиент</a>
+                        @endif
+                    @else
+                        <a href="{{ route('register') }}" class="btn btn-outline-dark rounded-pill">Зарегистрироваться как клиент</a>
+                    @endauth
+                </div>
             </div>
         </div>
     </div>

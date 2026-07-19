@@ -288,36 +288,24 @@
         <div class="row g-4">
             <div class="col-lg-7">
                 <div class="feature-panel accent p-4 h-100">
-                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
-                        <div>
-                            <div class="text-uppercase small text-secondary mb-2">Для семей</div>
-                            <h2 class="section-title mb-0">Главное на продакшн-уровне уже заложено</h2>
-                        </div>
-                        <span class="urgent-ribbon">Срочный сценарий: нужна сиделка сегодня</span>
-                    </div>
+                    <div class="text-uppercase small text-secondary mb-2">Для семьи</div>
+                    <h2 class="section-title mb-3">Когда нужен человек рядом, важно не тратить силы на хаотичный поиск</h2>
+                    <p class="text-secondary mb-4">
+                        Сервис помогает быстро найти сиделку для разовой смены, ухода после выписки, ночного присмотра
+                        или постоянной помощи пожилому родственнику. Можно заказать сиделку на сегодня, согласовать все
+                        в чате и провести оплату безопасно через платформу.
+                    </p>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <div class="card-soft p-3 h-100">
-                                <strong>График по реальным слотам</strong>
-                                <div class="text-secondary small mt-2">Не “понедельник-пятница”, а конкретные даты и часы, когда действительно нужна помощь.</div>
+                                <strong>Быстрее найти подходящего человека</strong>
+                                <div class="text-secondary small mt-2">Анкеты, проверка документов, отзывы и понятный график помогают не ошибиться с выбором.</div>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="card-soft p-3 h-100">
-                                <strong>Семейный доступ</strong>
-                                <div class="text-secondary small mt-2">Дочь, сын или другой родственник могут видеть заказы, участвовать в согласовании и чате.</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card-soft p-3 h-100">
-                                <strong>Шаблоны повторяющихся заказов</strong>
-                                <div class="text-secondary small mt-2">Подходит для постоянного ухода несколько раз в неделю и долгих повторяющихся смен.</div>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <div class="card-soft p-3 h-100">
-                                <strong>Свои услуги клиента</strong>
-                                <div class="text-secondary small mt-2">Если нужного пункта нет в общем каталоге, клиент добавляет его в свою заявку отдельно.</div>
+                                <strong>Подходит для семьи, а не только для одного заказчика</strong>
+                                <div class="text-secondary small mt-2">Родственники могут вместе участвовать в выборе, обсуждении условий и сопровождении заказа.</div>
                             </div>
                         </div>
                     </div>
@@ -326,12 +314,14 @@
             <div class="col-lg-5">
                 <div class="feature-panel warning p-4 h-100">
                     <div class="text-uppercase small text-secondary mb-2">Для сиделок</div>
-                    <h2 class="h3 mb-3">Анкета, которой можно доверять</h2>
-                    <div class="status-line"><span class="status-dot"></span><span>Отдельный список “могу выполнять” и “не выполняю”</span></div>
-                    <div class="status-line"><span class="status-dot"></span><span>Медицинские услуги отделены от бытовых</span></div>
-                    <div class="status-line"><span class="status-dot"></span><span>Графический календарь доступности по датам и времени</span></div>
-                    <div class="status-line"><span class="status-dot"></span><span>Документы, реквизиты, договор и дальнейшие выплаты</span></div>
-                    <div class="status-line mb-0"><span class="status-dot"></span><span>Отзывы, рейтинг и история завершенных заказов</span></div>
+                    <h2 class="h3 mb-3">Спокойный способ получать заказы и выплаты</h2>
+                    <p class="text-secondary mb-4">
+                        Сиделка заполняет анкету, показывает документы, отмечает реальные навыки и получает заказы,
+                        которые подходят по графику, городу и ставке. После подтвержденной смены деньги переводятся через сайт.
+                    </p>
+                    <div class="status-line"><span class="status-dot"></span><span>Прозрачные условия до выхода на смену</span></div>
+                    <div class="status-line"><span class="status-dot"></span><span>Заказы по реальному расписанию, а не вслепую</span></div>
+                    <div class="status-line mb-0"><span class="status-dot"></span><span>Рейтинг и отзывы помогают получать следующие заявки</span></div>
                 </div>
             </div>
         </div>
@@ -504,8 +494,8 @@
     <section class="cta-panel p-4 p-lg-5">
         <div class="row align-items-center g-4">
             <div class="col-lg-8">
-                <div class="text-uppercase small text-secondary mb-2">Следующий шаг</div>
-                <h2 class="section-title mb-3">Можно искать сиделку, публиковать анкету и проводить сделку внутри одной платформы</h2>
+                <div class="text-uppercase small text-secondary mb-2">Готовы начать</div>
+                <h2 class="section-title mb-3">Можно быстро найти сиделку, разместить анкету и договориться о помощи в одном сервисе</h2>
                 <p class="mb-0 text-secondary">Подходит и для разового срочного заказа, и для долгого ухода с графиком, документами, перепиской и безопасной оплатой.</p>
             </div>
             <div class="col-lg-4">

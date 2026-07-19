@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -19,6 +20,7 @@ class User extends Authenticatable
         'role',
         'phone',
         'city',
+        'city_id',
         'avatar',
         'about',
         'rating',
@@ -45,6 +47,11 @@ class User extends Authenticatable
         return $this->hasOne(CaregiverProfile::class);
     }
 
+    public function cityRecord(): BelongsTo
+    {
+        return $this->belongsTo(City::class, 'city_id');
+    }
+
     public function clientOrders(): HasMany
     {
         return $this->hasMany(Order::class, 'client_id');
@@ -53,6 +60,11 @@ class User extends Authenticatable
     public function caregiverOrders(): HasMany
     {
         return $this->hasMany(Order::class, 'caregiver_id');
+    }
+
+    public function caregiverAssignments(): HasMany
+    {
+        return $this->hasMany(OrderCaregiverAssignment::class, 'caregiver_id');
     }
 
     public function sentMessages(): HasMany
@@ -88,6 +100,36 @@ class User extends Authenticatable
     public function documents(): HasMany
     {
         return $this->hasMany(UserDocument::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'client_id');
+    }
+
+    public function payouts(): HasMany
+    {
+        return $this->hasMany(Payout::class, 'caregiver_id');
+    }
+
+    public function refunds(): HasMany
+    {
+        return $this->hasMany(Refund::class, 'client_id');
+    }
+
+    public function notificationsFeed(): HasMany
+    {
+        return $this->hasMany(MarketplaceNotification::class);
+    }
+
+    public function socialAccounts(): HasMany
+    {
+        return $this->hasMany(SocialAccount::class);
+    }
+
+    public function walletTransactions(): HasMany
+    {
+        return $this->hasMany(WalletTransaction::class);
     }
 
     public function isCaregiver(): bool

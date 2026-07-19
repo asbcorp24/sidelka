@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OrderScheduleSlot extends Model
 {
@@ -31,5 +32,10 @@ class OrderScheduleSlot extends Model
     public function orderTemplate(): BelongsTo
     {
         return $this->belongsTo(OrderTemplate::class);
+    }
+
+    public function caregiverAssignments(): HasMany
+    {
+        return $this->hasMany(OrderCaregiverAssignment::class);
     }
 }

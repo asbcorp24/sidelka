@@ -4,13 +4,21 @@ namespace Database\Seeders;
 
 use App\Models\AvailabilitySlot;
 use App\Models\CaregiverProfile;
+use App\Models\City;
+use App\Models\ClinicPartner;
+use App\Models\ClinicPartnerService;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\NewsPost;
 use App\Models\Order;
+use App\Models\OrderExpense;
+use App\Models\Payment;
+use App\Models\Payout;
 use App\Models\Review;
 use App\Models\Service;
+use App\Models\ShiftType;
 use App\Models\User;
+use App\Models\WalletTransaction;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -33,11 +41,14 @@ class MarketplaceSeeder extends Seeder
         DB::table('services')->delete();
         DB::table('users')->delete();
 
-        $password = Hash::make('password');
+        $defaultPassword = env('SEED_DEFAULT_PASSWORD', 'password');
+        $password = Hash::make($defaultPassword);
+        $superadminEmail = env('SUPERADMIN_EMAIL', 'admin@sidelka.test');
+        $superadminPassword = Hash::make(env('SUPERADMIN_PASSWORD', $defaultPassword));
 
         $admin = User::create([
-            'name' => 'Администратор',
-            'email' => 'admin@sidelka.test',
+            'name' => env('SUPERADMIN_NAME', 'Администратор'),
+            'email' => $superadminEmail,
             'role' => 'admin',
             'phone' => '+7 999 000-00-00',
             'city' => 'Москва',
@@ -46,8 +57,20 @@ class MarketplaceSeeder extends Seeder
             'reviews_count' => 0,
             'is_verified' => true,
             'last_seen_at' => now(),
-            'password' => $password,
+            'password' => $superadminPassword,
         ]);
+
+        $cities = collect([
+            City::create(['name' => 'Москва', 'slug' => 'moskva', 'sort_order' => 1]),
+            City::create(['name' => 'Химки', 'slug' => 'khimki', 'sort_order' => 2]),
+        ])->keyBy('name');
+
+        $shiftTypes = collect([
+            ShiftType::create(['code' => 'hourly', 'name' => 'Почасово', 'description' => 'Помощь по часам', 'sort_order' => 1]),
+            ShiftType::create(['code' => 'daily', 'name' => 'Дневная смена', 'description' => 'Помощь на день', 'sort_order' => 2]),
+            ShiftType::create(['code' => 'night', 'name' => 'Ночная смена', 'description' => 'Ночное дежурство', 'sort_order' => 3]),
+            ShiftType::create(['code' => 'calendar', 'name' => 'По календарю', 'description' => 'Точные даты и часы', 'sort_order' => 4]),
+        ])->keyBy('code');
 
         $services = collect([
             ['name' => 'Уколы и инъекции', 'category' => 'Медицинский уход', 'description' => 'Внутримышечные и подкожные инъекции по назначению врача.', 'requires_medical_training' => true, 'hourly_surcharge' => 250],
@@ -63,6 +86,34 @@ class MarketplaceSeeder extends Seeder
             ['name' => 'Ночной присмотр', 'category' => 'Смена', 'description' => 'Ночное дежурство и контроль состояния.', 'requires_medical_training' => false, 'hourly_surcharge' => 300],
             ['name' => 'Сиделка с проживанием', 'category' => 'Смена', 'description' => 'Длительное проживание и постоянный контроль состояния.', 'requires_medical_training' => false, 'hourly_surcharge' => 350],
         ])->map(fn ($service) => Service::create($service));
+
+        $clinic = ClinicPartner::create([
+            'name' => 'Клиника Забота+',
+            'slug' => 'klinika-zabota-plus',
+            'city' => 'Москва',
+            'contact_phone' => '+7 499 555-10-10',
+            'website' => 'https://zabota-plus.example',
+            'description' => 'Партнерская клиника для анализов, перевязок и врачебных консультаций со скидкой для клиентов сервиса.',
+            'discount_percent' => 10,
+            'is_active' => true,
+        ]);
+
+        $clinicServices = collect([
+            ClinicPartnerService::create([
+                'clinic_partner_id' => $clinic->id,
+                'name' => 'Выезд медсестры на дом',
+                'description' => 'Инъекции, перевязки и контроль состояния на дому.',
+                'base_price' => 2800,
+                'discount_percent' => 15,
+            ]),
+            ClinicPartnerService::create([
+                'clinic_partner_id' => $clinic->id,
+                'name' => 'Лабораторный забор анализов',
+                'description' => 'Выездной забор анализов для лежачих пациентов.',
+                'base_price' => 1900,
+                'discount_percent' => 10,
+            ]),
+        ]);
 
         $caregiverDefinitions = [
             [
@@ -126,12 +177,34 @@ class MarketplaceSeeder extends Seeder
             $caregivers->push($this->createCaregiver($definition, $services));
         }
 
+        $caregivers->each(function (User $caregiver) use ($cities) {
+            $caregiver->update([
+                'city_id' => $cities[$caregiver->city]->id ?? null,
+            ]);
+        });
+
         $clients = collect([
             User::create(['name' => 'Ирина Петрова', 'email' => 'irina@sidelka.test', 'role' => 'client', 'phone' => '+7 999 400-40-40', 'city' => 'Москва', 'about' => 'Ищу сиделку для мамы после перелома шейки бедра.', 'rating' => 4.8, 'reviews_count' => 5, 'is_verified' => true, 'last_seen_at' => now()->subMinutes(5), 'password' => $password]),
             User::create(['name' => 'Дмитрий Волков', 'email' => 'dmitry@sidelka.test', 'role' => 'client', 'phone' => '+7 999 500-50-50', 'city' => 'Москва', 'about' => 'Нужен ночной присмотр для отца после операции.', 'rating' => 4.6, 'reviews_count' => 3, 'is_verified' => true, 'last_seen_at' => now()->subMinutes(20), 'password' => $password]),
             User::create(['name' => 'Ольга Матвеева', 'email' => 'olga@sidelka.test', 'role' => 'client', 'phone' => '+7 999 600-60-60', 'city' => 'Химки', 'about' => 'Ищу сиделку с проживанием для бабушки.', 'rating' => 4.9, 'reviews_count' => 7, 'is_verified' => true, 'last_seen_at' => now()->subMinutes(42), 'password' => $password]),
             User::create(['name' => 'Сергей Демин', 'email' => 'sergey@sidelka.test', 'role' => 'client', 'phone' => '+7 999 700-70-70', 'city' => 'Москва', 'about' => 'Нужна дневная помощь после выписки из больницы.', 'rating' => 4.4, 'reviews_count' => 2, 'is_verified' => false, 'last_seen_at' => now()->subHours(2), 'password' => $password]),
         ]);
+
+        $clients->each(function (User $client) use ($cities) {
+            $client->update([
+                'city_id' => $cities[$client->city]->id ?? null,
+                'wallet_balance' => 45000,
+            ]);
+
+            WalletTransaction::create([
+                'user_id' => $client->id,
+                'type' => 'top_up',
+                'amount' => 45000,
+                'balance_after' => 45000,
+                'currency' => 'RUB',
+                'description' => 'Демо-пополнение баланса',
+            ]);
+        });
 
         $orders = collect([
             $this->createOrder($clients[0], $caregivers[0], [
@@ -227,6 +300,23 @@ class MarketplaceSeeder extends Seeder
             ], ['Ночной присмотр', 'Вынос отходов и фекалий', 'Гигиенический уход'], $services),
         ]);
 
+        $orders->each(function (Order $order) use ($cities, $shiftTypes) {
+            $order->update([
+                'city_id' => $cities[$order->city]->id ?? null,
+                'shift_type_id' => $shiftTypes[$order->schedule_type]->id ?? null,
+            ]);
+        });
+
+        $orders[0]->clinicPartnerServices()->attach($clinicServices[0]->id, [
+            'price_at_booking' => 2380,
+            'discount_percent' => 15,
+        ]);
+
+        $orders[2]->clinicPartnerServices()->attach($clinicServices[1]->id, [
+            'price_at_booking' => 1710,
+            'discount_percent' => 10,
+        ]);
+
         $conversationA = Conversation::create([
             'order_id' => $orders[0]->id,
             'client_id' => $clients[0]->id,
@@ -270,15 +360,50 @@ class MarketplaceSeeder extends Seeder
         $reviews = [
             ['order_id' => $orders[2]->id, 'author_id' => $clients[0]->id, 'subject_id' => $caregivers[1]->id, 'subject_role' => 'caregiver', 'rating' => 5, 'comment' => 'Очень спокойная и заботливая сиделка. Всегда приходила вовремя.', 'published_at' => now()->subDays(2)],
             ['order_id' => $orders[2]->id, 'author_id' => $caregivers[1]->id, 'subject_id' => $clients[0]->id, 'subject_role' => 'client', 'rating' => 5, 'comment' => 'Четкая коммуникация, своевременная оплата, хорошие условия работы.', 'published_at' => now()->subDays(2)],
-            ['order_id' => $orders[0]->id, 'author_id' => $clients[0]->id, 'subject_id' => $caregivers[0]->id, 'subject_role' => 'caregiver', 'rating' => 5, 'comment' => 'Быстро вышла на связь и подробно расспросила о состоянии пациента.', 'published_at' => now()->subDay()],
-            ['order_id' => $orders[3]->id, 'author_id' => $clients[2]->id, 'subject_id' => $caregivers[3]->id, 'subject_role' => 'caregiver', 'rating' => 5, 'comment' => 'Сильная анкета и очень уверенное общение, видно опыт.', 'published_at' => now()->subHours(18)],
-            ['order_id' => $orders[3]->id, 'author_id' => $caregivers[3]->id, 'subject_id' => $clients[2]->id, 'subject_role' => 'client', 'rating' => 5, 'comment' => 'Клиент подробно описал состояние пациентки и быстро внес предоплату.', 'published_at' => now()->subHours(18)],
-            ['order_id' => $orders[5]->id, 'author_id' => $clients[1]->id, 'subject_id' => $caregivers[2]->id, 'subject_role' => 'caregiver', 'rating' => 4, 'comment' => 'Хорошо подходит для ночных смен и аккуратно ведет себя с пациентом.', 'published_at' => now()->subHours(8)],
         ];
 
         foreach ($reviews as $review) {
             Review::create($review);
         }
+
+        $basePayment = Payment::create([
+            'order_id' => $orders[2]->id,
+            'client_id' => $clients[0]->id,
+            'caregiver_id' => $caregivers[1]->id,
+            'kind' => 'base_order',
+            'amount' => $orders[2]->hourly_budget * 4,
+            'currency' => 'RUB',
+            'status' => 'released',
+            'provider' => 'internal_wallet',
+            'description' => 'Основной счет по завершенному заказу',
+            'paid_at' => now()->subDays(3),
+            'held_at' => now()->subDays(3),
+            'released_at' => now()->subDays(2),
+        ]);
+
+        Payout::create([
+            'order_id' => $orders[2]->id,
+            'payment_id' => $basePayment->id,
+            'caregiver_id' => $caregivers[1]->id,
+            'amount' => $basePayment->amount,
+            'currency' => 'RUB',
+            'status' => 'paid',
+            'destination' => 'Банковские реквизиты сиделки',
+            'paid_at' => now()->subDays(2),
+        ]);
+
+        $expense = OrderExpense::create([
+            'order_id' => $orders[5]->id,
+            'caregiver_id' => $caregivers[2]->id,
+            'kind' => 'purchase',
+            'title' => 'Ночные расходники',
+            'description' => 'Пеленки и антисептик для ночной смены',
+            'quantity' => 1,
+            'unit_price' => 1200,
+            'line_total' => 1200,
+            'status' => 'pending_approval',
+            'purchased_at' => now()->subHours(4),
+        ]);
 
         $posts = [
             ['title' => 'Как безопасно выбрать сиделку для пожилого родственника', 'excerpt' => 'Памятка для семей, которые ищут сиделку впервые.', 'body' => 'Смотрите на опыт, проверку документов, отзывы, список услуг и ясность переписки до выхода на смену.', 'published_at' => now()->subDays(5)],
