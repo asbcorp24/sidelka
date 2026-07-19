@@ -1,6 +1,8 @@
 @extends('layouts.app')
 
-@php($title = $selectedCaregiverProfile ? 'Заказ выбранной сиделке' : 'Новый заказ')
+@php($title = $sourceOrder ? 'Продлить заказ' : ($selectedCaregiverProfile ? 'Заказ для выбранной сиделки' : 'Новый заказ'))
+@php($selectedServiceIds = collect(old('service_ids', $sourceOrder?->services?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id)->all())
+@php($selectedClinicServiceIds = collect(old('clinic_service_ids', $sourceOrder?->clinicPartnerServices?->pluck('id')->all() ?? []))->map(fn ($id) => (int) $id)->all())
 
 @push('styles')
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -48,11 +50,15 @@
         <div class="col-lg-8">
             <div class="card-soft p-4 mb-4">
                 <div class="text-uppercase small text-secondary">Оформление заказа</div>
-                <h1 class="section-title mb-2">{{ $selectedCaregiverProfile ? 'Заказ для выбранной сиделки' : 'Новый заказ' }}</h1>
+                <h1 class="section-title mb-2">{{ $title }}</h1>
                 <p class="text-secondary mb-0">
-                    {{ $selectedCaregiverProfile
-                        ? 'Заказ будет сразу отправлен выбранной сиделке. После ее подтверждения откроется личный чат по этой заявке.'
-                        : 'После сохранения система подберет сиделок по услугам, ставке и расписанию.' }}
+                    @if($sourceOrder)
+                        Новый заказ будет создан на основе уже завершенного заказа. Вы сможете поменять даты, время, услуги и условия ухода.
+                    @elseif($selectedCaregiverProfile)
+                        После сохранения заказ сразу уйдет выбранной сиделке. Если это долгий заказ, потом можно пригласить и других сиделок на отдельные смены.
+                    @else
+                        После сохранения система подберет подходящих сиделок по услугам, ставке, городу и выбранным сменам.
+                    @endif
                 </p>
             </div>
 
@@ -60,7 +66,7 @@
                 <div class="card-soft p-4 mb-4">
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
                         <div>
-                            <div class="text-uppercase small text-secondary">Выбрана сиделка</div>
+                            <div class="text-uppercase small text-secondary">Выбранная сиделка</div>
                             <h2 class="h4 mb-1">{{ $selectedCaregiverProfile->user->name }}</h2>
                             <div class="text-secondary">{{ $selectedCaregiverProfile->user->city }} • {{ $selectedCaregiverProfile->experience_years }} лет опыта</div>
                         </div>
@@ -76,95 +82,121 @@
                         <input type="hidden" name="caregiver_profile_id" value="{{ $selectedCaregiverProfile->id }}">
                     @endif
 
-                    <div class="col-md-6">
+                    <div class="col-md-8">
                         <label class="form-label">Название заказа</label>
-                        <input type="text" name="title" class="form-control" value="{{ old('title') }}">
+                        <input type="text" name="title" class="form-control" value="{{ old('title', $sourceOrder->title ?? '') }}" required>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-4">
                         <label class="form-label">Город</label>
-                        <input type="text" name="city" class="form-control" value="{{ old('city', $user->city) }}">
+                        <select name="city_id" class="form-select">
+                            <option value="">Выберите город</option>
+                            @foreach($cities as $city)
+                                <option value="{{ $city->id }}" @selected((int) old('city_id', $sourceOrder->city_id ?? 0) === $city->id)>{{ $city->name }}</option>
+                            @endforeach
+                        </select>
+                        <div class="form-text">Если нужного города нет, ниже можно вписать его вручную.</div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <label class="form-label">Город вручную</label>
+                        <input type="text" name="city" class="form-control" value="{{ old('city', $sourceOrder->city ?? $user->city) }}">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Тип графика</label>
                         <select name="schedule_type" class="form-select">
-                            <option value="hourly">Почасово</option>
-                            <option value="daily">Дневная смена</option>
-                            <option value="night">Ночная смена</option>
-                            <option value="calendar">По календарю</option>
+                            @foreach(['hourly' => 'Почасово', 'daily' => 'Дневная смена', 'night' => 'Ночная смена', 'calendar' => 'По календарю'] as $value => $label)
+                                <option value="{{ $value }}" @selected(old('schedule_type', $sourceOrder->schedule_type ?? 'calendar') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Тип смены</label>
+                        <select name="shift_type_id" class="form-select">
+                            <option value="">Не выбрано</option>
+                            @foreach($shiftTypes as $shiftType)
+                                <option value="{{ $shiftType->id }}" @selected((int) old('shift_type_id', $sourceOrder->shift_type_id ?? 0) === $shiftType->id)>{{ $shiftType->name }}</option>
+                            @endforeach
                         </select>
                     </div>
 
                     <div class="col-12">
                         <label class="form-label">Описание ухода</label>
-                        <textarea name="description" class="form-control" rows="3">{{ old('description') }}</textarea>
+                        <textarea name="description" class="form-control" rows="4" required>{{ old('description', $sourceOrder->description ?? '') }}</textarea>
                     </div>
 
                     <div class="col-md-6">
                         <label class="form-label">Адрес</label>
-                        <input type="text" name="address" class="form-control" value="{{ old('address') }}">
+                        <input type="text" name="address" class="form-control" value="{{ old('address', $sourceOrder->address ?? '') }}">
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Бюджет, ₽/час</label>
-                        <input type="number" name="hourly_budget" class="form-control" value="{{ old('hourly_budget') }}">
+                        <input type="number" name="hourly_budget" class="form-control" value="{{ old('hourly_budget', $sourceOrder->hourly_budget ?? '') }}" min="0" required>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Кто создает заказ</label>
                         <select name="family_member_id" class="form-select">
                             <option value="">Сам клиент</option>
                             @foreach($familyMembers as $familyMember)
-                                <option value="{{ $familyMember->id }}">{{ $familyMember->name }} • {{ $familyMember->relationship }}</option>
+                                <option value="{{ $familyMember->id }}" @selected((int) old('family_member_id') === $familyMember->id)>{{ $familyMember->name }} • {{ $familyMember->relationship }}</option>
                             @endforeach
                         </select>
                     </div>
 
                     <div class="col-md-3">
                         <label class="form-label">Возраст пациента</label>
-                        <input type="number" name="patient_age" class="form-control" value="{{ old('patient_age') }}">
+                        <input type="number" name="patient_age" class="form-control" value="{{ old('patient_age', $sourceOrder->patient_age ?? '') }}" min="0" max="120">
                     </div>
                     <div class="col-md-5">
                         <label class="form-label">Имя пациента</label>
-                        <input type="text" name="patient_name" class="form-control" value="{{ old('patient_name') }}">
+                        <input type="text" name="patient_name" class="form-control" value="{{ old('patient_name', $sourceOrder->patient_name ?? '') }}">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label">Повторяемость</label>
-                        <input type="text" name="recurrence_label" class="form-control" value="{{ old('recurrence_label') }}" placeholder="Например, пн/ср/пт">
+                        <input type="text" name="recurrence_label" class="form-control" value="{{ old('recurrence_label', $sourceOrder->recurrence_label ?? '') }}" placeholder="Например, пн/ср/пт">
                     </div>
 
-                    <div class="col-md-3">
-                        <div class="form-check mt-4">
-                            <input class="form-check-input" type="checkbox" name="is_urgent" value="1" {{ old('is_urgent') ? 'checked' : '' }}>
+                    <div class="col-md-4">
+                        <div class="form-check mt-4 pt-2">
+                            <input class="form-check-input" type="checkbox" name="is_urgent" value="1" @checked(old('is_urgent', $sourceOrder->is_urgent ?? false))>
                             <label class="form-check-label">Срочный заказ</label>
                         </div>
                     </div>
-                    <div class="col-md-3">
-                        <div class="form-check mt-4">
-                            <input class="form-check-input" type="checkbox" name="needs_today" value="1" {{ old('needs_today') ? 'checked' : '' }}>
+                    <div class="col-md-4">
+                        <div class="form-check mt-4 pt-2">
+                            <input class="form-check-input" type="checkbox" name="needs_today" value="1" @checked(old('needs_today', $sourceOrder->needs_today ?? false))>
                             <label class="form-check-label">Нужна сиделка сегодня</label>
                         </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check mt-4 pt-2">
+                            <input class="form-check-input" type="checkbox" name="allows_multiple_caregivers" value="1" @checked(old('allows_multiple_caregivers', $sourceOrder->allows_multiple_caregivers ?? false))>
+                            <label class="form-check-label">Долгий заказ, можно несколько сиделок</label>
+                        </div>
+                        <div class="form-text">Подходит, когда разные смены закрывают разные исполнители.</div>
                     </div>
 
                     <div class="col-12">
                         <label class="form-label">Особые требования</label>
-                        <textarea name="special_requirements" class="form-control" rows="2">{{ old('special_requirements') }}</textarea>
+                        <textarea name="special_requirements" class="form-control" rows="3">{{ old('special_requirements', $sourceOrder->special_requirements ?? '') }}</textarea>
                     </div>
 
                     <div class="col-12">
                         <label class="form-label">Свои нужные услуги клиента</label>
-                        <textarea name="custom_service_lines" class="form-control" rows="3">{{ old('custom_service_lines') }}</textarea>
-                        <div class="form-text">Если нужной услуги нет в общем списке, впишите каждую новой строкой. Эти пункты будут только в вашей заявке.</div>
+                        <textarea name="custom_service_lines" class="form-control" rows="3">{{ old('custom_service_lines', collect($sourceOrder->custom_services ?? [])->implode("\n")) }}</textarea>
+                        <div class="form-text">Если нужной услуги нет в общем каталоге, впишите каждую новой строкой.</div>
                     </div>
 
                     <div class="col-12">
-                        <label class="form-label d-block">Общие услуги от суперадмина</label>
+                        <label class="form-label d-block">Общие услуги</label>
                         <div class="row">
                             @foreach($services as $service)
                                 <div class="col-md-6">
                                     <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" name="service_ids[]" value="{{ $service->id }}">
+                                        <input class="form-check-input" type="checkbox" name="service_ids[]" value="{{ $service->id }}" @checked(in_array($service->id, $selectedServiceIds, true))>
                                         <label class="form-check-label">
                                             {{ $service->name }}
                                             @if($service->requires_medical_training)
-                                                <span class="text-danger">• медуслуга</span>
+                                                <span class="text-danger">• только для сиделок с медобразованием</span>
                                             @endif
                                         </label>
                                     </div>
@@ -173,10 +205,38 @@
                         </div>
                     </div>
 
+                    @if($clinicPartners->isNotEmpty())
+                        <div class="col-12">
+                            <label class="form-label d-block">Партнерские клиники и услуги</label>
+                            @foreach($clinicPartners as $clinic)
+                                @if($clinic->services->isNotEmpty())
+                                    <div class="border rounded-4 p-3 mb-3">
+                                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                                            <strong>{{ $clinic->name }}</strong>
+                                            @if($clinic->discount_percent > 0)
+                                                <span class="badge text-bg-success">Скидка до {{ $clinic->discount_percent }}%</span>
+                                            @endif
+                                        </div>
+                                        <div class="row">
+                                            @foreach($clinic->services as $service)
+                                                <div class="col-md-6">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" name="clinic_service_ids[]" value="{{ $service->id }}" @checked(in_array($service->id, $selectedClinicServiceIds, true))>
+                                                        <label class="form-check-label">{{ $service->name }} — {{ number_format($service->base_price, 0, ',', ' ') }} ₽</label>
+                                                    </div>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                @endif
+                            @endforeach
+                        </div>
+                    @endif
+
                     <div class="col-12">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
                             <label class="form-label mb-0">Календарь заказа</label>
-                            <div class="small text-secondary">Выберите даты, задайте время и добавьте смены. Это и есть реальное расписание заказа.</div>
+                            <div class="small text-secondary">Выберите даты, задайте время и добавьте смены. Для длинного заказа можно будет распределить их по разным сиделкам.</div>
                         </div>
                         <div class="slot-builder-shell">
                             <div class="row g-3 align-items-start">
@@ -215,12 +275,12 @@
                                 </div>
                             </div>
                         </div>
-                        <input type="hidden" name="calendar_slots_json" id="client-calendar-slots" value='@json(json_decode($calendarSeed, true))'>
+                        <input type="hidden" name="calendar_slots_json" id="client-calendar-slots" value='{{ $calendarSeed }}'>
                         <div id="client-calendar-summary" class="mt-3"></div>
                     </div>
 
                     <div class="col-12 d-flex flex-wrap gap-2">
-                        <button class="btn btn-dark rounded-pill px-4">Создать заказ</button>
+                        <button class="btn btn-dark rounded-pill px-4">Сохранить заказ</button>
                         <button class="btn btn-outline-dark rounded-pill px-4" type="submit" formaction="{{ route('client.templates.store') }}">Сохранить как шаблон</button>
                         <a href="{{ route('client.dashboard') }}" class="btn btn-outline-secondary rounded-pill px-4">Вернуться в кабинет</a>
                     </div>
@@ -233,13 +293,13 @@
                 <h2 class="h4 mb-3">Что будет дальше</h2>
                 <ul class="mb-0">
                     @if($selectedCaregiverProfile)
-                        <li>заказ сразу уйдет выбранной сиделке</li>
-                        <li>после подтверждения откроется личный чат именно по этой заявке</li>
-                        <li>дальше согласуете детали ухода и выход на смену</li>
+                        <li>Выбранная сиделка сразу увидит приглашение по заказу.</li>
+                        <li>После подтверждения откроется личный чат именно по этому заказу.</li>
+                        <li>Если заказ длинный, вы сможете распределить отдельные смены и на других сиделок.</li>
                     @else
-                        <li>система подберет сиделок по услугам, расписанию и ставке</li>
-                        <li>в кабинете вы увидите подходящие анкеты</li>
-                        <li>сможете нажать «Выбрать эту сиделку» и отправить приглашение</li>
+                        <li>Система подберет подходящих сиделок по услугам, бюджету и доступным сменам.</li>
+                        <li>На странице заказа можно выбрать конкретную сиделку и назначить ей нужные смены.</li>
+                        <li>После подтверждения начнется согласование и рабочий чат.</li>
                     @endif
                 </ul>
             </div>
@@ -251,7 +311,7 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 rounded-4">
             <div class="modal-header border-0">
-                <h2 class="modal-title h4 mb-0">Добавить смену в заказ</h2>
+                <h2 class="modal-title h4 mb-0">Добавить смену</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body pt-0">

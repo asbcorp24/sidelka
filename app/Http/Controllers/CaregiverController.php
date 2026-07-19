@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\AvailabilitySlot;
 use App\Models\City;
 use App\Models\Order;
+use App\Models\OrderCaregiverAssignment;
 use App\Models\OrderExpense;
+use App\Models\OrderScheduleSlot;
 use App\Models\Review;
 use App\Models\Service;
 use App\Models\ShiftType;
@@ -13,6 +15,7 @@ use App\Models\User;
 use App\Services\OrderFinanceService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class CaregiverController extends Controller
@@ -29,10 +32,9 @@ class CaregiverController extends Controller
     public function showOrder(Request $request, Order $order)
     {
         $user = $request->user();
-        abort_unless($user->isCaregiver() && $order->caregiver_id === $user->id, 404);
+        abort_unless($this->caregiverCanAccessOrder($user, $order), 404);
 
-        $this->loadOrderRelations($order);
-        $order = $this->decorateOrder($order);
+        $order = $this->decorateOrder($order, $user);
         $canReviewClient = $order->status === 'completed'
             && ! $order->reviews->contains(fn (Review $review) => $review->author_id === $user->id && $review->subject_id === $order->client_id);
 
@@ -44,7 +46,7 @@ class CaregiverController extends Controller
         $user = $request->user();
         abort_unless($user->isCaregiver(), 404);
 
-        $user->load(['payouts.order', 'caregiverOrders.expenses']);
+        $user->load(['payouts.order', 'caregiverOrders.expenses', 'caregiverAssignments.order']);
 
         return view('payments.caregiver-history', [
             'user' => $user,
@@ -63,10 +65,18 @@ class CaregiverController extends Controller
             'caregiverOrders.services',
             'caregiverOrders.scheduleSlots',
             'caregiverOrders.client',
+            'caregiverOrders.caregiverAssignments.caregiver',
+            'caregiverOrders.caregiverAssignments.scheduleSlot',
             'caregiverOrders.conversations.messages.sender',
             'caregiverOrders.expenses',
             'caregiverOrders.payments',
             'caregiverOrders.payouts',
+            'caregiverAssignments.order.client',
+            'caregiverAssignments.order.services',
+            'caregiverAssignments.order.scheduleSlots',
+            'caregiverAssignments.order.caregiverAssignments.caregiver',
+            'caregiverAssignments.order.caregiverAssignments.scheduleSlot',
+            'caregiverAssignments.order.conversations.messages.sender',
             'notificationsFeed',
         ]);
 
@@ -86,20 +96,35 @@ class CaregiverController extends Controller
             })
             ->values();
 
-        $incomingInvitations = $user->caregiverOrders
-            ->where('status', 'matched')
+        $ordersFromAssignments = $user->caregiverAssignments
+            ->pluck('order')
+            ->filter()
+            ->unique('id');
+
+        $incomingInvitations = $ordersFromAssignments
+            ->filter(fn (Order $order) => $order->caregiverAssignments
+                ->where('caregiver_id', $user->id)
+                ->where('status', 'invited')
+                ->isNotEmpty())
             ->sortByDesc('created_at')
-            ->map(fn (Order $order) => $this->decorateOrder($order))
+            ->map(fn (Order $order) => $this->decorateOrder($order, $user))
             ->values();
 
         $activeOrders = $user->caregiverOrders
-            ->whereIn('status', ['in_chat', 'in_progress', 'completed'])
+            ->concat($ordersFromAssignments)
+            ->unique('id')
+            ->filter(fn (Order $order) => $order->status !== 'matched' || $order->caregiverAssignments
+                ->where('caregiver_id', $user->id)
+                ->where('status', 'invited')
+                ->isEmpty())
+            ->filter(fn (Order $order) => in_array($order->status, ['in_chat', 'in_progress', 'completed', 'matched'], true))
             ->sortByDesc('created_at')
-            ->map(fn (Order $order) => $this->decorateOrder($order))
+            ->map(fn (Order $order) => $this->decorateOrder($order, $user))
             ->values();
 
         $reviews = $user->caregiverOrders
             ->pluck('client')
+            ->merge($ordersFromAssignments->pluck('client'))
             ->filter()
             ->unique('id')
             ->flatMap(fn (User $client) => $client->receivedReviews()->with('author', 'subject')->where('subject_role', 'client')->get())
@@ -108,13 +133,13 @@ class CaregiverController extends Controller
 
         $stats = [
             'new_matches' => $matchedOrders->count(),
-            'orders_done' => $user->caregiverOrders->where('status', 'completed')->count(),
+            'orders_done' => $activeOrders->where('status', 'completed')->count(),
             'released_amount' => $user->payouts()->where('status', 'paid')->sum('amount'),
-            'pending_payout' => $user->caregiverOrders->sum(fn (Order $order) => $order->payments->where('status', 'held')->sum('amount')),
+            'pending_payout' => $user->payouts()->where('status', 'pending')->sum('amount'),
         ];
 
         $notifications = [
-            'new_invitations' => $incomingInvitations->count(),
+            'new_invitations' => $incomingInvitations->sum(fn (Order $order) => $order->my_invited_slots_count),
             'new_messages' => $activeOrders->sum('unread_messages_count'),
             'new_notifications' => $user->notificationsFeed->whereNull('read_at')->count(),
         ];
@@ -194,57 +219,101 @@ class CaregiverController extends Controller
     public function acceptOrder(Request $request, Order $order)
     {
         $user = $request->user();
-        abort_unless($user->isCaregiver() && $order->caregiver_id === $user->id, 404);
+        abort_unless($this->caregiverCanAccessOrder($user, $order), 404);
 
         DB::transaction(function () use ($order, $user) {
+            $order->loadMissing('caregiverAssignments', 'conversations', 'client');
+
+            $updated = $order->caregiverAssignments()
+                ->where('caregiver_id', $user->id)
+                ->where('status', 'invited')
+                ->update([
+                    'status' => 'accepted',
+                    'confirmed_at' => now(),
+                ]);
+
+            if ($updated === 0 && $order->caregiver_id === $user->id) {
+                foreach ($order->scheduleSlots as $slot) {
+                    $order->caregiverAssignments()->updateOrCreate(
+                        [
+                            'order_schedule_slot_id' => $slot->id,
+                            'caregiver_id' => $user->id,
+                        ],
+                        [
+                            'status' => 'accepted',
+                            'confirmed_at' => now(),
+                        ]
+                    );
+                }
+            }
+
             $order->update([
                 'status' => 'in_chat',
                 'confirmed_at' => now(),
+                'caregiver_id' => $order->caregiver_id ?: $user->id,
             ]);
 
-            $conversation = $order->conversations()->where('caregiver_id', $user->id)->firstOrFail();
+            $conversation = $order->conversations()->firstOrCreate(
+                ['caregiver_id' => $user->id],
+                ['client_id' => $order->client_id, 'status' => 'active']
+            );
             $conversation->update(['status' => 'active']);
             $conversation->messages()->create([
                 'sender_id' => $user->id,
-                'body' => 'Подтверждаю заказ. Можем обсудить детали ухода и согласовать старт.',
+                'body' => 'Подтверждаю свои смены по заказу. Готова обсудить детали ухода и старт работы.',
             ]);
 
             $this->financeService->notify(
                 $order->client,
                 'order.accepted',
-                'Сиделка подтвердила заказ',
-                "Сиделка подтвердила заказ «{$order->title}»."
+                'Сиделка подтвердила смены',
+                "Сиделка подтвердила приглашение по заказу «{$order->title}».",
             );
         });
 
-        return redirect()->route('caregiver.orders.show', $order)->with('status', 'Заказ подтвержден.');
+        return redirect()->route('caregiver.orders.show', $order)->with('status', 'Смены подтверждены.');
     }
 
     public function declineOrder(Request $request, Order $order)
     {
         $user = $request->user();
-        abort_unless($user->isCaregiver() && $order->caregiver_id === $user->id, 404);
+        abort_unless($this->caregiverCanAccessOrder($user, $order), 404);
 
         DB::transaction(function () use ($order, $user) {
+            $order->loadMissing('caregiverAssignments', 'conversations', 'client');
+
+            $order->caregiverAssignments()
+                ->where('caregiver_id', $user->id)
+                ->where('status', 'invited')
+                ->update([
+                    'status' => 'declined',
+                    'confirmed_at' => null,
+                ]);
+
             $conversation = $order->conversations()->where('caregiver_id', $user->id)->first();
             if ($conversation) {
                 $conversation->update(['status' => 'declined']);
                 $conversation->messages()->create([
                     'sender_id' => $user->id,
-                    'body' => 'Сейчас не смогу взять этот заказ. Спасибо за приглашение.',
+                    'body' => 'Сейчас не смогу взять эти смены. Спасибо за приглашение.',
                 ]);
             }
 
-            $order->update([
-                'caregiver_id' => null,
-                'status' => 'published',
-            ]);
+            $hasAccepted = $order->caregiverAssignments()->where('status', 'accepted')->exists();
+            $hasInvited = $order->caregiverAssignments()->where('status', 'invited')->exists();
+
+            if (! $hasAccepted && ! $hasInvited) {
+                $order->update([
+                    'status' => 'published',
+                    'caregiver_id' => null,
+                ]);
+            }
 
             $this->financeService->notify(
                 $order->client,
                 'order.declined',
-                'Сиделка отказалась от заказа',
-                "Сиделка отказалась от заказа «{$order->title}». Можно выбрать другую."
+                'Сиделка отказалась от смен',
+                "Сиделка отказалась от приглашения по заказу «{$order->title}».",
             );
         });
 
@@ -254,7 +323,7 @@ class CaregiverController extends Controller
     public function cancelOrder(Request $request, Order $order)
     {
         $user = $request->user();
-        abort_unless($user->isCaregiver() && $order->caregiver_id === $user->id, 404);
+        abort_unless($this->caregiverCanAccessOrder($user, $order), 404);
         abort_if(in_array($order->status, ['completed', 'cancelled'], true), 422);
 
         $data = $request->validate([
@@ -270,7 +339,7 @@ class CaregiverController extends Controller
     public function storeExpense(Request $request, Order $order)
     {
         $user = $request->user();
-        abort_unless($user->isCaregiver() && $order->caregiver_id === $user->id, 404);
+        abort_unless($this->caregiverCanAccessOrder($user, $order), 404);
         abort_unless(in_array($order->status, ['in_chat', 'in_progress'], true), 422);
 
         $data = $request->validate([
@@ -299,7 +368,7 @@ class CaregiverController extends Controller
             $order->client,
             'expense.pending',
             'Новый дополнительный расход',
-            "Сиделка добавила расход «{$expense->title}» по заказу «{$order->title}»."
+            "Сиделка добавила расход «{$expense->title}» по заказу «{$order->title}».",
         );
 
         return back()->with('status', 'Допрасход добавлен и отправлен клиенту на подтверждение.');
@@ -308,7 +377,7 @@ class CaregiverController extends Controller
     public function storeReview(Request $request, Order $order)
     {
         $user = $request->user();
-        abort_unless($user->isCaregiver() && $order->caregiver_id === $user->id, 404);
+        abort_unless($this->caregiverCanAccessOrder($user, $order), 404);
         abort_unless($order->status === 'completed', 422);
 
         $data = $request->validate([
@@ -337,16 +406,15 @@ class CaregiverController extends Controller
     public function storeMessage(Request $request, Order $order)
     {
         $user = $request->user();
-        abort_unless($user->isCaregiver() && $order->caregiver_id === $user->id, 404);
+        abort_unless($this->caregiverCanAccessOrder($user, $order), 404);
 
         $data = $request->validate([
             'body' => ['required', 'string', 'max:2000'],
         ]);
 
-        $conversation = $order->conversations()
-            ->where('caregiver_id', $user->id)
-            ->where('status', 'active')
-            ->firstOrFail();
+        $order = $this->decorateOrder($order, $user);
+        $conversation = $order->active_conversation;
+        abort_unless($conversation && $conversation->status === 'active', 404);
 
         $conversation->messages()->create([
             'sender_id' => $user->id,
@@ -357,7 +425,7 @@ class CaregiverController extends Controller
             $order->client,
             'message.new',
             'Новое сообщение по заказу',
-            "Сиделка написала вам по заказу «{$order->title}»."
+            "Сиделка написала вам по заказу «{$order->title}».",
         );
 
         return back()->with('status', 'Сообщение отправлено.');
@@ -366,12 +434,11 @@ class CaregiverController extends Controller
     public function markMessagesRead(Request $request, Order $order)
     {
         $user = $request->user();
-        abort_unless($user->isCaregiver() && $order->caregiver_id === $user->id, 404);
+        abort_unless($this->caregiverCanAccessOrder($user, $order), 404);
 
-        $conversation = $order->conversations()
-            ->where('caregiver_id', $user->id)
-            ->where('status', 'active')
-            ->firstOrFail();
+        $order = $this->decorateOrder($order, $user);
+        $conversation = $order->active_conversation;
+        abort_unless($conversation && $conversation->status === 'active', 404);
 
         $conversation->messages()
             ->where('sender_id', '!=', $user->id)
@@ -381,6 +448,19 @@ class CaregiverController extends Controller
         return back()->with('status', 'Сообщения отмечены как прочитанные.');
     }
 
+    private function caregiverCanAccessOrder(?User $user, Order $order): bool
+    {
+        if (! $user || ! $user->isCaregiver()) {
+            return false;
+        }
+
+        if ($order->caregiver_id === $user->id) {
+            return true;
+        }
+
+        return $order->caregiverAssignments()->where('caregiver_id', $user->id)->exists();
+    }
+
     private function loadOrderRelations(Order $order): void
     {
         $order->loadMissing([
@@ -388,6 +468,7 @@ class CaregiverController extends Controller
             'services',
             'clinicPartnerServices.clinic',
             'scheduleSlots',
+            'conversations.caregiver',
             'conversations.messages.sender',
             'expenses',
             'payments',
@@ -395,16 +476,38 @@ class CaregiverController extends Controller
             'refunds',
             'cancellations.cancelledBy',
             'reviews.author',
+            'caregiverAssignments.caregiver',
+            'caregiverAssignments.scheduleSlot',
         ]);
     }
 
-    private function decorateOrder(Order $order): Order
+    private function decorateOrder(Order $order, User $user): Order
     {
         $this->loadOrderRelations($order);
 
-        $order->active_conversation = $order->conversations->where('caregiver_id', $order->caregiver_id)->first();
-        $order->unread_messages_count = $order->active_conversation
-            ? $order->active_conversation->messages->where('sender_id', '!=', $order->caregiver_id)->whereNull('read_at')->count()
+        $myAssignments = $order->caregiverAssignments
+            ->where('caregiver_id', $user->id)
+            ->values();
+
+        $activeConversation = $order->conversations
+            ->where('caregiver_id', $user->id)
+            ->first();
+
+        $order->my_assignments = $myAssignments;
+        $order->my_invited_slots_count = $myAssignments->where('status', 'invited')->count();
+        $order->my_confirmed_slots_count = $myAssignments->whereIn('status', ['accepted', 'completed'])->count();
+        $order->assignments_by_slot = $order->scheduleSlots
+            ->map(function (OrderScheduleSlot $slot) use ($order) {
+                $slot->assignments_for_view = $order->caregiverAssignments
+                    ->where('order_schedule_slot_id', $slot->id)
+                    ->values();
+
+                return $slot;
+            })
+            ->values();
+        $order->active_conversation = $activeConversation;
+        $order->unread_messages_count = $activeConversation
+            ? $activeConversation->messages->where('sender_id', '!=', $user->id)->whereNull('read_at')->count()
             : 0;
 
         return $order;

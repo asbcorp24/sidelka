@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\Payout;
 use App\Models\Refund;
 use App\Models\User;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -80,7 +81,7 @@ class OrderFinanceService
 
     public function releaseHeldPayments(Order $order): void
     {
-        $order->loadMissing(['payments', 'caregiver']);
+        $order->loadMissing(['payments', 'caregiver', 'caregiverAssignments.caregiver', 'caregiverAssignments.scheduleSlot']);
 
         foreach ($order->payments->where('status', 'held') as $payment) {
             $payment->update([
@@ -88,20 +89,37 @@ class OrderFinanceService
                 'released_at' => now(),
             ]);
 
-            Payout::firstOrCreate(
-                [
-                    'order_id' => $order->id,
-                    'payment_id' => $payment->id,
-                    'caregiver_id' => $order->caregiver_id,
-                ],
-                [
-                    'amount' => $payment->amount,
-                    'currency' => $payment->currency,
-                    'status' => 'paid',
-                    'destination' => 'Банковские реквизиты сиделки',
-                    'paid_at' => now(),
-                ]
-            );
+            if ($payment->kind === 'base_order' && $order->allows_multiple_caregivers) {
+                $this->releaseMultiCaregiverPayouts($order, $payment);
+            } else {
+                Payout::firstOrCreate(
+                    [
+                        'order_id' => $order->id,
+                        'payment_id' => $payment->id,
+                        'caregiver_id' => $order->caregiver_id,
+                    ],
+                    [
+                        'amount' => $payment->amount,
+                        'currency' => $payment->currency,
+                        'status' => 'paid',
+                        'destination' => 'Банковские реквизиты сиделки',
+                        'paid_at' => now(),
+                    ]
+                );
+            }
+        }
+
+        if ($order->allows_multiple_caregivers) {
+            foreach ($order->caregiverAssignments->pluck('caregiver')->filter()->unique('id') as $caregiver) {
+                $this->notify(
+                    $caregiver,
+                    'payout.released',
+                    'Выплата переведена',
+                    "По заказу «{$order->title}» выплата переведена на ваш счет."
+                );
+            }
+
+            return;
         }
 
         $this->notify(
@@ -185,7 +203,7 @@ class OrderFinanceService
     {
         if ($client->wallet_balance < $amount) {
             throw ValidationException::withMessages([
-                'wallet' => "Недостаточно средств на балансе. Нужно еще " . number_format($amount - $client->wallet_balance, 0, ',', ' ') . ' ₽.',
+                'wallet' => 'Недостаточно средств на балансе. Нужно еще ' . number_format($amount - $client->wallet_balance, 0, ',', ' ') . ' ₽.',
             ]);
         }
 
@@ -217,6 +235,58 @@ class OrderFinanceService
 
             return $payment;
         });
+    }
+
+    private function releaseMultiCaregiverPayouts(Order $order, Payment $payment): void
+    {
+        $acceptedAssignments = $order->caregiverAssignments
+            ->whereIn('status', ['accepted', 'completed'])
+            ->filter(fn ($assignment) => $assignment->caregiver && $assignment->scheduleSlot)
+            ->values();
+
+        if ($acceptedAssignments->isEmpty()) {
+            return;
+        }
+
+        $minutesByCaregiver = $acceptedAssignments
+            ->groupBy('caregiver_id')
+            ->map(function ($assignments) {
+                return $assignments->sum(function ($assignment) {
+                    $slot = $assignment->scheduleSlot;
+                    $start = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->starts_at);
+                    $end = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->ends_at);
+
+                    return max(1, $start->diffInMinutes($end));
+                });
+            });
+
+        $totalMinutes = max(1, (int) $minutesByCaregiver->sum());
+        $distributed = 0;
+        $caregiverIds = $minutesByCaregiver->keys()->values();
+
+        foreach ($caregiverIds as $index => $caregiverId) {
+            $minutes = (int) $minutesByCaregiver[$caregiverId];
+            $amount = $index === $caregiverIds->count() - 1
+                ? $payment->amount - $distributed
+                : (int) floor($payment->amount * ($minutes / $totalMinutes));
+
+            $distributed += $amount;
+
+            Payout::firstOrCreate(
+                [
+                    'order_id' => $order->id,
+                    'payment_id' => $payment->id,
+                    'caregiver_id' => $caregiverId,
+                ],
+                [
+                    'amount' => max(0, $amount),
+                    'currency' => $payment->currency,
+                    'status' => 'paid',
+                    'destination' => 'Банковские реквизиты сиделки',
+                    'paid_at' => now(),
+                ]
+            );
+        }
     }
 
     private function refundPayment(Payment $payment, string $reason): void

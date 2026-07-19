@@ -13,6 +13,9 @@
         <div class="text-lg-end">
             <span class="badge {{ $order->status_badge_class }}">{{ $order->status_label }}</span>
             <div class="mt-2"><span class="badge {{ $order->payment_status_badge_class }}">{{ $order->payment_status_label }}</span></div>
+            @if($order->allows_multiple_caregivers)
+                <div class="mt-2"><span class="badge text-bg-dark">Долгий заказ с несколькими сиделками</span></div>
+            @endif
         </div>
     </div>
 
@@ -25,6 +28,59 @@
                         <span class="service-chip">{{ $service->name }}</span>
                     @endforeach
                 </div>
+
+                @if($order->assignments_by_slot->isNotEmpty())
+                    <div class="mb-3">
+                        <strong>Смены по заказу:</strong>
+                        <div class="mt-3">
+                            @foreach($order->assignments_by_slot as $slot)
+                                <div class="border rounded-4 p-3 mb-3">
+                                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                        <div>
+                                            <strong>{{ $slot->scheduled_date->format('d.m.Y') }} {{ substr($slot->starts_at, 0, 5) }}-{{ substr($slot->ends_at, 0, 5) }}</strong>
+                                            @if($slot->label)
+                                                <div class="small text-secondary mt-1">{{ $slot->label }}</div>
+                                            @endif
+                                        </div>
+                                        @php($myAssignment = $slot->assignments_for_view->firstWhere('caregiver_id', $user->id))
+                                        @if($myAssignment)
+                                            <span class="badge {{ $myAssignment->status === 'accepted' || $myAssignment->status === 'completed' ? 'text-bg-success' : ($myAssignment->status === 'declined' ? 'text-bg-danger' : 'text-bg-warning') }}">
+                                                {{ $myAssignment->status === 'accepted' ? 'Моя подтвержденная смена' : ($myAssignment->status === 'declined' ? 'Я отказалась' : ($myAssignment->status === 'completed' ? 'Моя завершенная смена' : 'Ждет моего решения')) }}
+                                            </span>
+                                        @endif
+                                    </div>
+
+                                    @if($slot->assignments_for_view->isNotEmpty())
+                                        <div class="mt-3">
+                                            @foreach($slot->assignments_for_view as $assignment)
+                                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 border-top pt-2 mt-2">
+                                                    <div>
+                                                        <strong>{{ $assignment->caregiver?->name ?: 'Сиделка' }}</strong>
+                                                        <div class="small text-secondary">
+                                                            @if($assignment->status === 'invited')
+                                                                Ожидает подтверждения
+                                                            @elseif($assignment->status === 'accepted')
+                                                                Смена подтверждена
+                                                            @elseif($assignment->status === 'declined')
+                                                                Отказ
+                                                            @elseif($assignment->status === 'completed')
+                                                                Смена выполнена
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                    <span class="badge {{ $assignment->status === 'accepted' || $assignment->status === 'completed' ? 'text-bg-success' : ($assignment->status === 'declined' ? 'text-bg-danger' : 'text-bg-warning') }}">
+                                                        {{ $assignment->status === 'accepted' ? 'Подтверждено' : ($assignment->status === 'declined' ? 'Отказ' : ($assignment->status === 'completed' ? 'Завершено' : 'Ожидание')) }}
+                                                    </span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
                 <div class="d-flex justify-content-between py-2 border-bottom">
                     <span>Основной счет</span>
                     <strong>{{ number_format($order->base_amount, 0, ',', ' ') }} ₽</strong>
@@ -40,10 +96,14 @@
                         <div>
                             <div>{{ $expense->title }}</div>
                             <div class="small text-secondary">
-                                @if($expense->status === 'pending_approval') Ждет подтверждения клиента
-                                @elseif($expense->status === 'rejected') Отклонено клиентом
-                                @elseif($expense->status === 'approved') Согласовано
-                                @elseif($expense->status === 'billed') Удержано с баланса клиента
+                                @if($expense->status === 'pending_approval')
+                                    Ждет подтверждения клиента
+                                @elseif($expense->status === 'rejected')
+                                    Отклонено клиентом
+                                @elseif($expense->status === 'approved')
+                                    Согласовано
+                                @elseif($expense->status === 'billed')
+                                    Удержано с баланса клиента
                                 @endif
                             </div>
                         </div>
@@ -56,17 +116,18 @@
                 </div>
             </div>
 
-            @if($order->status === 'matched')
+            @if($order->my_invited_slots_count > 0)
                 <div class="card-soft p-4 mb-4">
-                    <h2 class="h4 mb-3">Приглашение на заказ</h2>
+                    <h2 class="h4 mb-3">Приглашение на смены</h2>
+                    <p class="text-secondary">Вы подтверждаете или отклоняете только свои смены. Остальные назначения по заказу не затрагиваются.</p>
                     <div class="d-flex gap-2 flex-wrap">
                         <form action="{{ route('caregiver.orders.accept', $order) }}" method="POST">
                             @csrf
-                            <button class="btn btn-dark rounded-pill">Подтвердить заказ</button>
+                            <button class="btn btn-dark rounded-pill">Подтвердить мои смены</button>
                         </form>
                         <form action="{{ route('caregiver.orders.decline', $order) }}" method="POST">
                             @csrf
-                            <button class="btn btn-outline-dark rounded-pill">Отказаться</button>
+                            <button class="btn btn-outline-dark rounded-pill">Отказаться от моих смен</button>
                         </form>
                     </div>
                 </div>
@@ -179,7 +240,7 @@
             @if($order->payouts->isNotEmpty())
                 <div class="card-soft p-4">
                     <h2 class="h4 mb-3">Выплаты по заказу</h2>
-                    @foreach($order->payouts as $payout)
+                    @foreach($order->payouts->where('caregiver_id', $user->id) as $payout)
                         <div class="d-flex justify-content-between py-2 border-bottom">
                             <span>{{ optional($payout->paid_at)->format('d.m.Y') ?: 'Ожидает' }}</span>
                             <strong>{{ number_format($payout->amount, 0, ',', ' ') }} ₽</strong>

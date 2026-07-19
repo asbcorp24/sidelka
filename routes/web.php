@@ -53,6 +53,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/cabinet/client', [ClientController::class, 'myDashboard'])->name('client.dashboard');
         Route::get('/cabinet/client/orders/{order}', [ClientController::class, 'showOrder'])->name('client.orders.show');
         Route::get('/cabinet/client/orders/create', [ClientController::class, 'createOrder'])->name('client.orders.create');
+        Route::get('/cabinet/client/orders/{order}/extend', [ClientController::class, 'extendOrder'])->name('client.orders.extend');
         Route::get('/cabinet/client/payments', [ClientController::class, 'paymentsHistory'])->name('client.payments.index');
         Route::get('/caregivers/{caregiverProfile}/order', [ClientController::class, 'createOrderForCaregiver'])->name('client.orders.create_for_caregiver');
         Route::post('/cabinet/client/orders', [ClientController::class, 'storeOrder'])->name('client.orders.store');

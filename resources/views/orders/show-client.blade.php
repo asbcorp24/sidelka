@@ -13,6 +13,9 @@
         <div class="text-lg-end">
             <span class="badge {{ $order->status_badge_class }}">{{ $order->status_label }}</span>
             <div class="mt-2"><span class="badge {{ $order->payment_status_badge_class }}">{{ $order->payment_status_label }}</span></div>
+            @if($order->allows_multiple_caregivers)
+                <div class="mt-2"><span class="badge text-bg-dark">Долгий заказ с несколькими сиделками</span></div>
+            @endif
         </div>
     </div>
 
@@ -31,10 +34,48 @@
 
                 @if($order->scheduleSlots->isNotEmpty())
                     <div class="mb-3">
-                        <strong>Расписание:</strong>
-                        <div class="mt-2 d-flex flex-wrap gap-2">
-                            @foreach($order->scheduleSlots as $slot)
-                                <span class="availability-chip">{{ $slot->scheduled_date->format('d.m.Y') }} {{ substr($slot->starts_at, 0, 5) }}-{{ substr($slot->ends_at, 0, 5) }}</span>
+                        <strong>Расписание и назначения:</strong>
+                        <div class="mt-3">
+                            @foreach($order->assignments_by_slot as $slot)
+                                <div class="border rounded-4 p-3 mb-3">
+                                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                        <div>
+                                            <strong>{{ $slot->scheduled_date->format('d.m.Y') }} {{ substr($slot->starts_at, 0, 5) }}-{{ substr($slot->ends_at, 0, 5) }}</strong>
+                                            @if($slot->label)
+                                                <div class="small text-secondary mt-1">{{ $slot->label }}</div>
+                                            @endif
+                                        </div>
+                                        @if($slot->assignments_for_view->isEmpty())
+                                            <span class="badge text-bg-secondary">Пока без назначенной сиделки</span>
+                                        @endif
+                                    </div>
+
+                                    @if($slot->assignments_for_view->isNotEmpty())
+                                        <div class="mt-3">
+                                            @foreach($slot->assignments_for_view as $assignment)
+                                                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 border-top pt-2 mt-2">
+                                                    <div>
+                                                        <strong>{{ $assignment->caregiver?->name ?: 'Сиделка' }}</strong>
+                                                        <div class="small text-secondary">
+                                                            @if($assignment->status === 'invited')
+                                                                Приглашение отправлено, ждем подтверждения
+                                                            @elseif($assignment->status === 'accepted')
+                                                                Смена подтверждена
+                                                            @elseif($assignment->status === 'declined')
+                                                                Сиделка отказалась
+                                                            @elseif($assignment->status === 'completed')
+                                                                Смена выполнена
+                                                            @endif
+                                                        </div>
+                                                    </div>
+                                                    <span class="badge {{ $assignment->status === 'accepted' || $assignment->status === 'completed' ? 'text-bg-success' : ($assignment->status === 'declined' ? 'text-bg-danger' : 'text-bg-warning') }}">
+                                                        {{ $assignment->status === 'accepted' ? 'Подтверждено' : ($assignment->status === 'declined' ? 'Отказ' : ($assignment->status === 'completed' ? 'Завершено' : 'Ожидание')) }}
+                                                    </span>
+                                                </div>
+                                            @endforeach
+                                        </div>
+                                    @endif
+                                </div>
                             @endforeach
                         </div>
                     </div>
@@ -75,7 +116,15 @@
                     <div class="d-flex justify-content-between py-2 border-bottom">
                         <div>
                             <div>{{ $expense->title }}</div>
-                            <div class="small text-secondary">{{ $expense->status === 'pending_approval' ? 'Ждет подтверждения' : ($expense->status === 'rejected' ? 'Отклонено' : 'Согласовано') }}</div>
+                            <div class="small text-secondary">
+                                @if($expense->status === 'pending_approval')
+                                    Ждет подтверждения
+                                @elseif($expense->status === 'rejected')
+                                    Отклонено
+                                @else
+                                    Согласовано
+                                @endif
+                            </div>
                         </div>
                         <strong>{{ number_format($expense->line_total, 0, ',', ' ') }} ₽</strong>
                     </div>
@@ -98,49 +147,55 @@
                 </div>
             </div>
 
-            @if($order->caregiver && $order->status === 'matched')
+            @if($order->assignedCaregivers->isNotEmpty())
                 <div class="card-soft p-4 mb-4">
-                    <h2 class="h4 mb-2">Ожидаем подтверждение сиделки</h2>
-                    <div class="text-secondary">Приглашение уже отправлено {{ $order->caregiver->name }}. После подтверждения откроется рабочий чат по заказу.</div>
-                </div>
-            @endif
+                    <h2 class="h4 mb-3">Чаты по заказу</h2>
+                    @foreach($order->conversations->where('status', 'active') as $conversation)
+                        <div class="border rounded-4 p-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                                <div>
+                                    <strong>{{ $conversation->caregiver?->name ?: 'Сиделка' }}</strong>
+                                    <div class="small text-secondary">Личный чат по этому заказу</div>
+                                </div>
+                                <form action="{{ route('client.orders.messages.read', $order) }}" method="POST">
+                                    @csrf
+                                    <input type="hidden" name="caregiver_id" value="{{ $conversation->caregiver_id }}">
+                                    <button class="btn btn-outline-dark rounded-pill btn-sm">Отметить как прочитанное</button>
+                                </form>
+                            </div>
 
-            @if($order->active_conversation && $order->active_conversation->status === 'active')
-                <div class="card-soft p-4 mb-4">
-                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                        <h2 class="h4 mb-0">Чат по заказу</h2>
-                        <span class="text-secondary">Сиделка: {{ $order->caregiver->name }}</span>
-                    </div>
+                            @foreach($conversation->messages as $message)
+                                <div class="chat-bubble {{ $message->sender_id === $user->id ? 'client' : 'caregiver' }} mb-2">
+                                    <strong>{{ $message->sender->name }}</strong>
+                                    <div>{{ $message->body }}</div>
+                                </div>
+                            @endforeach
 
-                    @if(($order->unread_messages_count ?? 0) > 0)
-                        <form action="{{ route('client.orders.messages.read', $order) }}" method="POST" class="mb-3">
-                            @csrf
-                            <button class="btn btn-outline-dark rounded-pill">Отметить как прочитанное</button>
-                        </form>
-                    @endif
-
-                    @foreach($order->active_conversation->messages as $message)
-                        <div class="chat-bubble {{ $message->sender_id === $user->id ? 'client' : 'caregiver' }} mb-2">
-                            <strong>{{ $message->sender->name }}</strong>
-                            <div>{{ $message->body }}</div>
+                            <form action="{{ route('client.orders.messages.store', $order) }}" method="POST" class="mt-3">
+                                @csrf
+                                <input type="hidden" name="caregiver_id" value="{{ $conversation->caregiver_id }}">
+                                <div class="input-group">
+                                    <input type="text" name="body" class="form-control" placeholder="Напишите сообщение сиделке">
+                                    <button class="btn btn-dark" type="submit">Отправить</button>
+                                </div>
+                            </form>
                         </div>
                     @endforeach
-
-                    <form action="{{ route('client.orders.messages.store', $order) }}" method="POST" class="mt-3">
-                        @csrf
-                        <div class="input-group">
-                            <input type="text" name="body" class="form-control" placeholder="Напишите сообщение сиделке">
-                            <button class="btn btn-dark" type="submit">Отправить</button>
-                        </div>
-                    </form>
                 </div>
             @endif
 
-            @if($order->status === 'completed' && $canReviewCaregiver)
+            @if($order->status === 'completed' && $canReviewCaregiver && $order->assignedCaregivers->isNotEmpty())
                 <div class="card-soft p-4 mb-4">
                     <h2 class="h4 mb-3">Оставить отзыв о сиделке</h2>
                     <form action="{{ route('client.orders.review.store', $order) }}" method="POST" class="row g-3">
                         @csrf
+                        <div class="col-md-5">
+                            <select name="subject_id" class="form-select">
+                                @foreach($order->assignedCaregivers as $caregiver)
+                                    <option value="{{ $caregiver->id }}">{{ $caregiver->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
                         <div class="col-md-3">
                             <select name="rating" class="form-select">
                                 @for($i = 5; $i >= 1; $i--)
@@ -165,6 +220,9 @@
                 <div class="d-grid gap-2">
                     <a href="{{ route('client.dashboard') }}" class="btn btn-outline-dark rounded-pill">Назад в кабинет</a>
                     <a href="{{ route('client.orders.create') }}" class="btn btn-dark rounded-pill">Создать новый заказ</a>
+                    @if($order->status === 'completed' && $order->payment_status === 'released')
+                        <a href="{{ route('client.orders.extend', $order) }}" class="btn btn-outline-dark rounded-pill">Продлить заказ</a>
+                    @endif
                 </div>
                 @if($order->status === 'in_chat')
                     <form action="{{ route('client.orders.start', $order) }}" method="POST" class="mt-3">
@@ -186,10 +244,10 @@
                 @endif
             </div>
 
-            @if(! $order->caregiver_id)
+            @if($order->matched_caregivers->isNotEmpty())
                 <div class="card-soft p-4">
-                    <h2 class="h4 mb-3">Подходящие сиделки</h2>
-                    @forelse($order->matched_caregivers as $caregiver)
+                    <h2 class="h4 mb-3">{{ $order->allows_multiple_caregivers ? 'Подобрать сиделок по сменам' : 'Подходящие сиделки' }}</h2>
+                    @foreach($order->matched_caregivers as $caregiver)
                         <div class="border rounded-4 p-3 mb-3">
                             <strong>{{ $caregiver->name }}</strong>
                             <div class="text-secondary">{{ $caregiver->caregiverProfile->experience_years }} лет опыта • от {{ number_format($caregiver->caregiverProfile->hourly_rate_from, 0, ',', ' ') }} ₽/час</div>
@@ -198,14 +256,26 @@
                                     <span class="service-chip">{{ $matchedService }}</span>
                                 @endforeach
                             </div>
+
                             <form action="{{ route('client.orders.invite', [$order, $caregiver->caregiverProfile]) }}" method="POST" class="mt-3">
                                 @csrf
-                                <button class="btn btn-dark rounded-pill btn-sm">Выбрать эту сиделку</button>
+                                @if($order->allows_multiple_caregivers)
+                                    <div class="small fw-semibold mb-2">Назначить на смены:</div>
+                                    @foreach($order->scheduleSlots->whereIn('id', $caregiver->available_slot_ids) as $slot)
+                                        <label class="form-check border rounded-3 px-3 py-2 mb-2">
+                                            <input class="form-check-input me-2" type="checkbox" name="slot_ids[]" value="{{ $slot->id }}">
+                                            <span class="form-check-label">
+                                                {{ $slot->scheduled_date->format('d.m.Y') }} {{ substr($slot->starts_at, 0, 5) }}-{{ substr($slot->ends_at, 0, 5) }}
+                                            </span>
+                                        </label>
+                                    @endforeach
+                                    <button class="btn btn-dark rounded-pill btn-sm">Отправить приглашение на выбранные смены</button>
+                                @else
+                                    <button class="btn btn-dark rounded-pill btn-sm">Выбрать эту сиделку</button>
+                                @endif
                             </form>
                         </div>
-                    @empty
-                        <p class="text-secondary mb-0">По этому заказу пока нет полных совпадений.</p>
-                    @endforelse
+                    @endforeach
                 </div>
             @endif
         </div>
