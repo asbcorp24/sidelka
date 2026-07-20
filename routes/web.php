@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CaregiverController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ContractController;
+use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NewsController;
 use App\Http\Controllers\SocialAuthController;
@@ -19,7 +20,12 @@ Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
-    Route::post('/register', [AuthController::class, 'register'])->name('register.store');
+    Route::post('/register', [AuthController::class, 'register'])
+        ->middleware('throttle:10,1')
+        ->name('register.store');
+    Route::get('/register/captcha', [AuthController::class, 'refreshCaptcha'])
+        ->middleware('throttle:20,1')
+        ->name('register.captcha');
     Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect'])
         ->whereIn('provider', ['vk', 'yandex'])
         ->name('social.redirect');
@@ -33,7 +39,16 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-    Route::middleware('role:caregiver')->group(function () {
+    Route::get('/email/verify', [EmailVerificationController::class, 'notice'])
+        ->name('verification.notice');
+    Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
+        ->middleware(['signed', 'throttle:6,1'])
+        ->name('verification.verify');
+    Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])
+        ->middleware('throttle:3,1')
+        ->name('verification.send');
+
+    Route::middleware(['verified', 'role:caregiver'])->group(function () {
         Route::get('/cabinet/caregiver', [CaregiverController::class, 'myDashboard'])->name('caregiver.dashboard');
         Route::get('/cabinet/caregiver/orders/{order}', [CaregiverController::class, 'showOrder'])->name('caregiver.orders.show');
         Route::get('/cabinet/caregiver/payouts', [CaregiverController::class, 'payoutsHistory'])->name('caregiver.payouts.index');
@@ -49,7 +64,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/cabinet/caregiver/agreement', [ContractController::class, 'caregiverAgreement'])->name('contracts.caregiver.preview');
     });
 
-    Route::middleware('role:client')->group(function () {
+    Route::middleware(['verified', 'role:client'])->group(function () {
         Route::get('/cabinet/client', [ClientController::class, 'myDashboard'])->name('client.dashboard');
         Route::get('/cabinet/client/orders/{order}', [ClientController::class, 'showOrder'])->name('client.orders.show');
         Route::get('/cabinet/client/orders/create', [ClientController::class, 'createOrder'])->name('client.orders.create');
@@ -73,16 +88,17 @@ Route::middleware('auth')->group(function () {
         Route::get('/cabinet/client/agreement', [ContractController::class, 'clientAgreement'])->name('contracts.client.preview');
     });
 
-    Route::post('/cabinet/legal/profile', [ContractController::class, 'updateProfile'])->name('contracts.profile.update');
-    Route::post('/cabinet/legal/document', [ContractController::class, 'storeDocument'])->name('contracts.document.store');
+    Route::middleware('verified')->group(function () {
+        Route::post('/cabinet/legal/profile', [ContractController::class, 'updateProfile'])->name('contracts.profile.update');
+        Route::post('/cabinet/legal/document', [ContractController::class, 'storeDocument'])->name('contracts.document.store');
+    });
 
-    Route::middleware('role:admin')->group(function () {
+    Route::middleware(['verified', 'role:admin'])->group(function () {
         Route::get('/admin', [AdminController::class, 'dashboard'])->name('admin.dashboard');
         Route::post('/admin/services', [AdminController::class, 'storeService'])->name('admin.services.store');
         Route::post('/admin/news', [AdminController::class, 'storeNews'])->name('admin.news.store');
         Route::post('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');
+        Route::get('/dashboard/caregiver/{user}', [CaregiverController::class, 'dashboard'])->name('dashboard.caregiver');
+        Route::get('/dashboard/client/{user}', [ClientController::class, 'dashboard'])->name('dashboard.client');
     });
 });
-
-Route::get('/dashboard/caregiver/{user}', [CaregiverController::class, 'dashboard'])->name('dashboard.caregiver');
-Route::get('/dashboard/client/{user}', [ClientController::class, 'dashboard'])->name('dashboard.client');
