@@ -22,7 +22,7 @@ return [
     |
     | Here you may configure all of the mailers used by your application plus
     | their respective settings. Several examples have been configured for
-    | you and you are free to add your own as your application requires.
+    | you and you are free to add additional mailers as your application requires.
     |
     | Laravel supports a variety of mail "transport" drivers to be used while
     | sending an e-mail. You will specify which one you are using for your
@@ -91,8 +91,8 @@ return [
     */
 
     'from' => [
-        'address' => env('MAIL_FROM_ADDRESS', 'hello@example.com'),
-        'name' => env('MAIL_FROM_NAME', 'Example'),
+        'address' => env('MAIL_FROM_ADDRESS') ?: env('MAIL_USERNAME') ?: 'no-reply@example.com',
+        'name' => env('MAIL_FROM_NAME') ?: env('APP_NAME', 'Сиделка24'),
     ],
 
     /*
