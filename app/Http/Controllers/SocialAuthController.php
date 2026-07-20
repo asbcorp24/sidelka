@@ -8,12 +8,15 @@ use App\Models\SocialAccount;
 use App\Models\User;
 use App\Socialite\VkProvider;
 use App\Socialite\YandexProvider;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
+use Throwable;
 
 class SocialAuthController extends Controller
 {
@@ -26,7 +29,7 @@ class SocialAuthController extends Controller
     {
         try {
             $socialUser = $this->driver($provider)->user();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             return redirect()->route('login')->withErrors([
                 'social' => 'Не удалось выполнить вход через ' . $this->providerLabel($provider) . '.',
             ]);
@@ -38,22 +41,32 @@ class SocialAuthController extends Controller
             ->first();
 
         if ($account) {
+            $this->verifyEmailFromProvider($account->user, $socialUser->getEmail());
             Auth::login($account->user, true);
             $request->session()->regenerate();
             $account->user->update(['last_seen_at' => now()]);
+
+            if (! $account->user->hasVerifiedEmail()) {
+                return redirect()->route('verification.notice');
+            }
 
             return redirect()->route($this->redirectRoute($account->user));
         }
 
         if ($socialUser->getEmail()) {
-            $existingUser = User::where('email', $socialUser->getEmail())->first();
+            $existingUser = User::where('email', Str::lower($socialUser->getEmail()))->first();
 
             if ($existingUser) {
                 $this->attachSocialAccount($existingUser, $provider, $socialUser);
+                $this->verifyEmailFromProvider($existingUser, $socialUser->getEmail());
 
                 Auth::login($existingUser, true);
                 $request->session()->regenerate();
                 $existingUser->update(['last_seen_at' => now()]);
+
+                if (! $existingUser->hasVerifiedEmail()) {
+                    return redirect()->route('verification.notice');
+                }
 
                 return redirect()->route($this->redirectRoute($existingUser))
                     ->with('status', 'Аккаунт ' . $this->providerLabel($provider) . ' привязан к существующему профилю.');
@@ -88,6 +101,10 @@ class SocialAuthController extends Controller
         $pending = $request->session()->get('social_auth.pending');
         abort_unless($pending, 404);
 
+        $request->merge([
+            'email' => Str::lower(trim((string) $request->input('email'))),
+        ]);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
@@ -96,10 +113,14 @@ class SocialAuthController extends Controller
             'city' => ['required', 'string', 'max:255'],
         ]);
 
-        $user = DB::transaction(function () use ($data, $pending) {
+        $providerEmailMatches = ! empty($pending['email'])
+            && Str::lower((string) $pending['email']) === $data['email'];
+
+        $user = DB::transaction(function () use ($data, $pending, $providerEmailMatches) {
             $user = User::create([
                 'name' => $data['name'],
                 'email' => $data['email'],
+                'email_verified_at' => $providerEmailMatches ? now() : null,
                 'password' => bcrypt(str()->random(32)),
                 'role' => $data['role'],
                 'phone' => $data['phone'] ?? null,
@@ -135,6 +156,18 @@ class SocialAuthController extends Controller
         Auth::login($user, true);
         $request->session()->regenerate();
 
+        if (! $user->hasVerifiedEmail()) {
+            try {
+                event(new Registered($user));
+            } catch (Throwable $exception) {
+                report($exception);
+            }
+
+            return redirect()
+                ->route('verification.notice')
+                ->with('status', 'Подтвердите указанный email, чтобы завершить регистрацию.');
+        }
+
         return redirect()->route($this->redirectRoute($user));
     }
 
@@ -153,6 +186,17 @@ class SocialAuthController extends Controller
                 'refresh_token' => $socialUser->refreshToken,
             ]
         );
+    }
+
+    private function verifyEmailFromProvider(User $user, ?string $providerEmail): void
+    {
+        if ($user->hasVerifiedEmail() || ! $providerEmail) {
+            return;
+        }
+
+        if (Str::lower($user->email) === Str::lower($providerEmail)) {
+            $user->markEmailAsVerified();
+        }
     }
 
     private function driver(string $provider)
