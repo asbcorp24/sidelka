@@ -7,6 +7,7 @@ use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use Throwable;
 
 class EmailVerificationController extends Controller
 {
@@ -38,7 +39,15 @@ class EmailVerificationController extends Controller
             return redirect()->route($this->redirectRoute($request->user()));
         }
 
-        $request->user()->sendEmailVerificationNotification();
+        try {
+            $request->user()->sendEmailVerificationNotification();
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors([
+                'email' => 'Не удалось отправить письмо. Проверьте MAIL_FROM_ADDRESS и параметры SMTP в файле .env.',
+            ]);
+        }
 
         return back()->with('status', 'Новая ссылка подтверждения отправлена на ваш email.');
     }
