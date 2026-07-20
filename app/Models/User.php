@@ -140,6 +140,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(WalletTransaction::class);
     }
 
+    public function walletTopUps(): HasMany
+    {
+        return $this->hasMany(WalletTopUp::class);
+    }
+
     public function isCaregiver(): bool
     {
         return $this->role === 'caregiver';
