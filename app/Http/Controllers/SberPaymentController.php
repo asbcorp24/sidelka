@@ -21,6 +21,10 @@ class SberPaymentController extends Controller
         $providerOrderId = (string) $request->input('mdOrder', '');
         $orderNumber = (string) $request->input('orderNumber', '');
 
+        if ($providerOrderId === '' && $orderNumber === '') {
+            return response('INVALID CALLBACK', 400);
+        }
+
         $topUp = WalletTopUp::query()
             ->where(function ($query) use ($providerOrderId, $orderNumber) {
                 if ($providerOrderId !== '') {
