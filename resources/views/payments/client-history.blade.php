@@ -1,6 +1,7 @@
 @extends('layouts.app')
 
 @php($title = 'История оплат')
+@php($topUps = $user->walletTopUps()->latest()->get())
 
 @section('content')
 <div class="container py-4 py-lg-5">
@@ -9,6 +10,26 @@
     <div class="card-soft p-4 mb-4">
         <h2 class="h4 mb-3">Баланс</h2>
         <div class="display-6">{{ number_format($user->wallet_balance, 0, ',', ' ') }} ₽</div>
+    </div>
+
+    <div class="card-soft p-4 mb-4">
+        <h2 class="h4 mb-3">Пополнения через Сбер</h2>
+        @forelse($topUps as $topUp)
+            <div class="d-flex justify-content-between align-items-start gap-3 py-2 border-bottom">
+                <div>
+                    <div>Пополнение баланса</div>
+                    <div class="small text-secondary text-break">
+                        {{ $topUp->order_number }} • {{ $topUp->created_at->format('d.m.Y H:i') }}
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div><strong>{{ number_format($topUp->amount, 0, ',', ' ') }} ₽</strong></div>
+                    <span class="badge {{ $topUp->status_badge_class }}">{{ $topUp->status_label }}</span>
+                </div>
+            </div>
+        @empty
+            <p class="text-secondary mb-0">Пополнений через Сбер пока нет.</p>
+        @endforelse
     </div>
 
     <div class="card-soft p-4 mb-4">
