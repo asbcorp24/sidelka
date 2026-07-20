@@ -8,13 +8,24 @@ use App\Http\Controllers\ContractController;
 use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NewsController;
+use App\Http\Controllers\SberPaymentController;
 use App\Http\Controllers\SocialAuthController;
+use App\Http\Controllers\WalletTopUpController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/caregivers', [HomeController::class, 'caregivers'])->name('caregivers.index');
 Route::get('/caregivers/{caregiverProfile}', [HomeController::class, 'showCaregiver'])->name('caregivers.show');
 Route::get('/news', [NewsController::class, 'index'])->name('news.index');
+
+Route::post('/payments/sber/callback', [SberPaymentController::class, 'callback'])
+    ->name('payments.sber.callback');
+Route::get('/payments/sber/return/{walletTopUp}', [SberPaymentController::class, 'returnResult'])
+    ->whereUuid('walletTopUp')
+    ->name('payments.sber.return');
+Route::get('/payments/sber/fail/{walletTopUp}', [SberPaymentController::class, 'failResult'])
+    ->whereUuid('walletTopUp')
+    ->name('payments.sber.fail');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -72,7 +83,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/cabinet/client/payments', [ClientController::class, 'paymentsHistory'])->name('client.payments.index');
         Route::get('/caregivers/{caregiverProfile}/order', [ClientController::class, 'createOrderForCaregiver'])->name('client.orders.create_for_caregiver');
         Route::post('/cabinet/client/orders', [ClientController::class, 'storeOrder'])->name('client.orders.store');
-        Route::post('/cabinet/client/wallet/top-up', [ClientController::class, 'topUpWallet'])->name('client.wallet.topup');
+        Route::post('/cabinet/client/wallet/top-up', [WalletTopUpController::class, 'store'])->name('client.wallet.topup');
         Route::post('/cabinet/client/orders/{order}/start', [ClientController::class, 'startOrder'])->name('client.orders.start');
         Route::post('/cabinet/client/orders/{order}/complete', [ClientController::class, 'completeOrder'])->name('client.orders.complete');
         Route::post('/cabinet/client/orders/{order}/cancel', [ClientController::class, 'cancelOrder'])->name('client.orders.cancel');
