@@ -36,16 +36,15 @@ class ShiftCompletionController extends Controller
             return back()->with('status', 'Эта смена уже подтверждена и передана в выплату.');
         }
 
-        abort_unless(in_array($assignment->status, ['accepted', 'completion_requested'], true), 422);
+        abort_unless($assignment->status === 'accepted', 422);
         $this->assertShiftEnded($assignment);
 
         $data = $request->validate([
             'completion_note' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        if ($assignment->status !== 'completion_requested') {
+        if (! $assignment->completion_requested_at) {
             $assignment->update([
-                'status' => 'completion_requested',
                 'completion_requested_at' => now(),
                 'completion_note' => $data['completion_note'] ?? null,
             ]);
@@ -80,7 +79,7 @@ class ShiftCompletionController extends Controller
             return back()->with('status', 'Эта смена уже подтверждена и выплата сформирована.');
         }
 
-        abort_unless(in_array($assignment->status, ['accepted', 'completion_requested'], true), 422);
+        abort_unless($assignment->status === 'accepted', 422);
         $this->assertShiftEnded($assignment);
 
         $payout = $this->financeService->releaseAssignmentPayout($assignment, $user);
@@ -111,7 +110,7 @@ class ShiftCompletionController extends Controller
         $order->loadMissing(['scheduleSlots', 'caregiverAssignments', 'conversations']);
 
         $unfinished = $order->caregiverAssignments
-            ->whereIn('status', ['invited', 'accepted', 'completion_requested']);
+            ->whereIn('status', ['invited', 'accepted']);
 
         if ($unfinished->isNotEmpty()) {
             throw ValidationException::withMessages([
