@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\AgentCommission;
 use App\Models\MarketplaceNotification;
 use App\Models\Order;
 use App\Models\OrderExpense;
@@ -48,7 +49,8 @@ class OrderFinanceService
             $order,
             $order->base_amount,
             'base_order',
-            'Удержание средств по основному счету заказа'
+            'Удержание средств по основному счету заказа',
+            $order->caregiver_id,
         );
     }
 
@@ -68,7 +70,8 @@ class OrderFinanceService
             $order,
             $expense->line_total,
             'expense',
-            "Дополнительный счет по расходу #{$expense->id}: {$expense->title}"
+            "Дополнительный счет по расходу #{$expense->id}: {$expense->title}",
+            $expense->caregiver_id ?: $order->caregiver_id,
         );
 
         $expense->update([
@@ -91,43 +94,39 @@ class OrderFinanceService
 
             if ($payment->kind === 'base_order' && $order->allows_multiple_caregivers) {
                 $this->releaseMultiCaregiverPayouts($order, $payment);
-            } else {
-                Payout::firstOrCreate(
-                    [
-                        'order_id' => $order->id,
-                        'payment_id' => $payment->id,
-                        'caregiver_id' => $order->caregiver_id,
-                    ],
-                    [
-                        'amount' => $payment->amount,
-                        'currency' => $payment->currency,
-                        'status' => 'paid',
-                        'destination' => 'Банковские реквизиты сиделки',
-                        'paid_at' => now(),
-                    ]
-                );
-            }
-        }
-
-        if ($order->allows_multiple_caregivers) {
-            foreach ($order->caregiverAssignments->pluck('caregiver')->filter()->unique('id') as $caregiver) {
-                $this->notify(
-                    $caregiver,
-                    'payout.released',
-                    'Выплата переведена',
-                    "По заказу «{$order->title}» выплата переведена на ваш счет."
-                );
+                continue;
             }
 
-            return;
+            $caregiverId = $payment->caregiver_id ?: $order->caregiver_id;
+            if (! $caregiverId) {
+                throw ValidationException::withMessages([
+                    'payout' => 'Невозможно сформировать выплату: у платежа не определена сиделка.',
+                ]);
+            }
+
+            $this->createPayout(
+                order: $order,
+                payment: $payment,
+                caregiverId: (int) $caregiverId,
+                grossAmount: (int) $payment->amount,
+                applyCommission: $payment->kind === 'base_order',
+            );
         }
 
-        $this->notify(
-            $order->caregiver,
-            'payout.released',
-            'Выплата переведена',
-            "По заказу «{$order->title}» выплата переведена на ваш счет."
-        );
+        $paidPayouts = $order->payouts()->where('status', 'paid')->get()->groupBy('caregiver_id');
+
+        foreach ($paidPayouts as $caregiverId => $payouts) {
+            $caregiver = User::find($caregiverId);
+            $net = (int) $payouts->sum('amount');
+            $commission = (int) $payouts->sum('commission_amount');
+
+            $this->notify(
+                $caregiver,
+                'payout.released',
+                'Выплата переведена',
+                "По заказу «{$order->title}» выплачено {$net} ₽. Агентское вознаграждение площадки: {$commission} ₽."
+            );
+        }
     }
 
     public function cancelOrder(Order $order, User $actor, string $reason, ?string $details = null): void
@@ -199,21 +198,27 @@ class OrderFinanceService
         ]);
     }
 
-    private function holdFromWallet(User $client, Order $order, int $amount, string $kind, string $description): Payment
-    {
+    private function holdFromWallet(
+        User $client,
+        Order $order,
+        int $amount,
+        string $kind,
+        string $description,
+        ?int $caregiverId = null,
+    ): Payment {
         if ($client->wallet_balance < $amount) {
             throw ValidationException::withMessages([
                 'wallet' => 'Недостаточно средств на балансе. Нужно еще ' . number_format($amount - $client->wallet_balance, 0, ',', ' ') . ' ₽.',
             ]);
         }
 
-        return DB::transaction(function () use ($client, $order, $amount, $kind, $description) {
+        return DB::transaction(function () use ($client, $order, $amount, $kind, $description, $caregiverId) {
             $client->decrement('wallet_balance', $amount);
             $client->refresh();
 
             $payment = $order->payments()->create([
                 'client_id' => $client->id,
-                'caregiver_id' => $order->caregiver_id,
+                'caregiver_id' => $caregiverId,
                 'kind' => $kind,
                 'amount' => $amount,
                 'currency' => 'RUB',
@@ -261,32 +266,80 @@ class OrderFinanceService
             });
 
         $totalMinutes = max(1, (int) $minutesByCaregiver->sum());
-        $distributed = 0;
+        $distributedGross = 0;
         $caregiverIds = $minutesByCaregiver->keys()->values();
 
         foreach ($caregiverIds as $index => $caregiverId) {
             $minutes = (int) $minutesByCaregiver[$caregiverId];
-            $amount = $index === $caregiverIds->count() - 1
-                ? $payment->amount - $distributed
-                : (int) floor($payment->amount * ($minutes / $totalMinutes));
+            $grossAmount = $index === $caregiverIds->count() - 1
+                ? (int) $payment->amount - $distributedGross
+                : (int) floor((int) $payment->amount * ($minutes / $totalMinutes));
 
-            $distributed += $amount;
+            $distributedGross += $grossAmount;
 
-            Payout::firstOrCreate(
+            $this->createPayout(
+                order: $order,
+                payment: $payment,
+                caregiverId: (int) $caregiverId,
+                grossAmount: max(0, $grossAmount),
+                applyCommission: true,
+            );
+        }
+    }
+
+    private function createPayout(
+        Order $order,
+        Payment $payment,
+        int $caregiverId,
+        int $grossAmount,
+        bool $applyCommission,
+    ): Payout {
+        $commissionPercent = $applyCommission
+            ? max(0, min(100, (float) config('legal.agent_commission_percent', 0)))
+            : 0.0;
+        $commissionAmount = $applyCommission
+            ? (int) round($grossAmount * $commissionPercent / 100)
+            : 0;
+        $netAmount = max(0, $grossAmount - $commissionAmount);
+
+        $payout = Payout::firstOrCreate(
+            [
+                'order_id' => $order->id,
+                'payment_id' => $payment->id,
+                'caregiver_id' => $caregiverId,
+            ],
+            [
+                'gross_amount' => $grossAmount,
+                'commission_percent' => $commissionPercent,
+                'commission_amount' => $commissionAmount,
+                'amount' => $netAmount,
+                'currency' => $payment->currency,
+                'status' => 'paid',
+                'destination' => 'Банковские реквизиты сиделки',
+                'paid_at' => now(),
+            ]
+        );
+
+        if ($commissionAmount > 0) {
+            AgentCommission::firstOrCreate(
                 [
-                    'order_id' => $order->id,
                     'payment_id' => $payment->id,
                     'caregiver_id' => $caregiverId,
                 ],
                 [
-                    'amount' => max(0, $amount),
+                    'order_id' => $order->id,
+                    'payout_id' => $payout->id,
+                    'gross_amount' => $grossAmount,
+                    'percent' => $commissionPercent,
+                    'amount' => $commissionAmount,
                     'currency' => $payment->currency,
-                    'status' => 'paid',
-                    'destination' => 'Банковские реквизиты сиделки',
-                    'paid_at' => now(),
+                    'status' => 'recognized',
+                    'recognized_at' => now(),
                 ]
             );
         }
+
+        return $payout;
     }
 
     private function refundPayment(Payment $payment, string $reason): void
