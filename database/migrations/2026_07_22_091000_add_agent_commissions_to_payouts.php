@@ -12,6 +12,7 @@ return new class extends Migration
             $table->unsignedBigInteger('gross_amount')->nullable()->after('caregiver_id');
             $table->decimal('commission_percent', 5, 2)->default(0)->after('gross_amount');
             $table->unsignedBigInteger('commission_amount')->default(0)->after('commission_percent');
+            $table->string('external_reference')->nullable()->after('destination');
         });
 
         Schema::create('agent_commissions', function (Blueprint $table) {
@@ -38,7 +39,12 @@ return new class extends Migration
         Schema::dropIfExists('agent_commissions');
 
         Schema::table('payouts', function (Blueprint $table) {
-            $table->dropColumn(['gross_amount', 'commission_percent', 'commission_amount']);
+            $table->dropColumn([
+                'gross_amount',
+                'commission_percent',
+                'commission_amount',
+                'external_reference',
+            ]);
         });
     }
 };
