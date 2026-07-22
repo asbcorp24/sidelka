@@ -26,10 +26,6 @@ class RequireSignedOrderContracts
             ->unique('id')
             ->values();
 
-        if ($order->caregiver && $caregivers->doesntContain('id', $order->caregiver->id)) {
-            $caregivers->push($order->caregiver);
-        }
-
         $missing = $caregivers->filter(function ($caregiver) use ($order) {
             return ! LegalContract::query()
                 ->where('type', LegalContract::TYPE_ORDER_SERVICE)
