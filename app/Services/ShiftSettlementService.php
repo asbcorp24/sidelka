@@ -30,12 +30,12 @@ class ShiftSettlementService
             $act = $locked->act;
             $zeroResolution = $approvedGrossAmount === 0;
             $actIsUsable = $act && (
-                $act->status === ShiftAct::STATUS_SIGNED
+                in_array($act->status, [ShiftAct::STATUS_SIGNED, ShiftAct::STATUS_RESOLVED], true)
                 || ($zeroResolution && in_array($act->status, [ShiftAct::STATUS_DISPUTED, ShiftAct::STATUS_CANCELLED], true))
             );
 
             if (! $actIsUsable) {
-                throw ValidationException::withMessages(['act' => 'Для выплаты нужен подписанный акт либо решение об отказе в оплате.']);
+                throw ValidationException::withMessages(['act' => 'Для выплаты нужен подписанный акт либо зафиксированное решение CRM по спору.']);
             }
 
             if ($locked->disputes()->whereIn('status', ['open', 'in_review'])->exists()) {
@@ -97,7 +97,7 @@ class ShiftSettlementService
 
             $locked->update([
                 'status' => 'completed',
-                'client_confirmed_at' => $locked->client_confirmed_at ?: now(),
+                'client_confirmed_at' => $locked->client_confirmed_at ?: ($act->client_confirmed_at ?: null),
                 'completed_at' => $locked->completed_at ?: now(),
                 'payout_generated_at' => now(),
             ]);
@@ -115,7 +115,7 @@ class ShiftSettlementService
                     $locked->caregiver,
                     'shift.payout_created',
                     'Выплата за смену сформирована',
-                    'По подтверждённому акту ' . $act->number . ' к выплате сформировано '
+                    'По акту ' . $act->number . ' к выплате сформировано '
                         . number_format($net, 0, ',', ' ') . ' ₽.',
                     ['assignment_id' => $locked->id, 'payout_id' => $payout->id],
                 );
