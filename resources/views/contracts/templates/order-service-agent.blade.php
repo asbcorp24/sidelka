@@ -18,11 +18,11 @@
     <tr><td><strong>Особые требования</strong></td><td>{{ $order->special_requirements ?: 'не указаны' }}</td></tr>
 </table>
 
-<h2>3. График</h2>
-@if($order->scheduleSlots->isNotEmpty())
+<h2>3. График Исполнителя</h2>
+@if($contractSlots->isNotEmpty())
 <table width="100%" cellpadding="6" cellspacing="0" border="1">
     <tr><th>Дата</th><th>Начало</th><th>Окончание</th><th>Примечание</th></tr>
-    @foreach($order->scheduleSlots as $slot)
+    @foreach($contractSlots as $slot)
         <tr>
             <td>{{ $slot->scheduled_date->format('d.m.Y') }}</td>
             <td>{{ substr($slot->starts_at, 0, 5) }}</td>
@@ -34,12 +34,12 @@
 @else
 <p>Начало: {{ optional($order->starts_at)->format('d.m.Y H:i') }}. Окончание: {{ optional($order->ends_at)->format('d.m.Y H:i') }}.</p>
 @endif
-<p>Расчетный объем: {{ number_format($minutes / 60, 2, ',', ' ') }} часа.</p>
+<p>Расчетный объем работы данного Исполнителя: {{ number_format($minutes / 60, 2, ',', ' ') }} часа.</p>
 
 <h2>4. Стоимость, комиссия и расчеты</h2>
 <table width="100%" cellpadding="6" cellspacing="0" border="1">
     <tr><td width="55%">Цена одного часа</td><td>{{ number_format($order->hourly_budget, 0, ',', ' ') }} ₽</td></tr>
-    <tr><td>Стоимость услуг по настоящему договору</td><td><strong>{{ number_format($serviceAmount, 0, ',', ' ') }} ₽</strong></td></tr>
+    <tr><td>Стоимость услуг Исполнителя по настоящему договору</td><td><strong>{{ number_format($serviceAmount, 0, ',', ' ') }} ₽</strong></td></tr>
     <tr><td>Агентское вознаграждение Площадки ({{ number_format($commissionPercent, 2, ',', ' ') }}%)</td><td>{{ number_format($commissionAmount, 0, ',', ' ') }} ₽</td></tr>
     <tr><td>Плановая сумма к выплате Исполнителю</td><td>{{ number_format($caregiverAmount, 0, ',', ' ') }} ₽</td></tr>
 </table>
