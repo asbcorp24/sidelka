@@ -28,45 +28,15 @@
                 linear-gradient(180deg, #f9f6f1 0%, #fff 100%);
         }
 
-        .navbar-brand {
-            font-weight: 800;
-            letter-spacing: 0.03em;
-        }
+        .navbar-brand { font-weight: 800; letter-spacing: 0.03em; }
+        .hero-shell, .card-soft { border: 1px solid rgba(31, 111, 120, 0.08); box-shadow: var(--card-shadow); }
+        .hero-shell { background: linear-gradient(135deg, rgba(244, 239, 231, 0.95), rgba(215, 235, 229, 0.95)); border-radius: 28px; }
+        .card-soft { border-radius: 22px; background: rgba(255, 255, 255, 0.92); }
+        .badge-soft { background: rgba(31, 111, 120, 0.1); color: var(--brand-dark); }
+        .section-title { font-size: clamp(1.8rem, 3vw, 2.7rem); font-weight: 800; }
+        .price-tag { color: var(--brand-dark); font-weight: 800; font-size: 1.4rem; }
 
-        .hero-shell,
-        .card-soft {
-            border: 1px solid rgba(31, 111, 120, 0.08);
-            box-shadow: var(--card-shadow);
-        }
-
-        .hero-shell {
-            background: linear-gradient(135deg, rgba(244, 239, 231, 0.95), rgba(215, 235, 229, 0.95));
-            border-radius: 28px;
-        }
-
-        .card-soft {
-            border-radius: 22px;
-            background: rgba(255, 255, 255, 0.92);
-        }
-
-        .badge-soft {
-            background: rgba(31, 111, 120, 0.1);
-            color: var(--brand-dark);
-        }
-
-        .section-title {
-            font-size: clamp(1.8rem, 3vw, 2.7rem);
-            font-weight: 800;
-        }
-
-        .price-tag {
-            color: var(--brand-dark);
-            font-weight: 800;
-            font-size: 1.4rem;
-        }
-
-        .availability-chip,
-        .service-chip {
+        .availability-chip, .service-chip {
             display: inline-flex;
             align-items: center;
             gap: 0.35rem;
@@ -86,35 +56,14 @@
             border: 1px solid rgba(31, 111, 120, 0.08);
         }
 
-        .metric .value {
-            font-size: 1.9rem;
-            font-weight: 800;
-        }
-
-        .chat-bubble {
-            border-radius: 18px;
-            padding: 1rem 1.1rem;
-            max-width: 85%;
-        }
-
-        .chat-bubble.client {
-            background: var(--sand);
-        }
-
-        .chat-bubble.caregiver {
-            background: var(--mint);
-            margin-left: auto;
-        }
-
-        .news-card {
-            background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244, 248, 249, 0.96));
-            border-radius: 24px;
-            border: 1px solid rgba(31, 111, 120, 0.08);
-        }
-
-        footer {
-            color: var(--muted);
-        }
+        .metric .value { font-size: 1.9rem; font-weight: 800; }
+        .chat-bubble { border-radius: 18px; padding: 1rem 1.1rem; max-width: 85%; }
+        .chat-bubble.client { background: var(--sand); }
+        .chat-bubble.caregiver { background: var(--mint); margin-left: auto; }
+        .news-card { background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(244, 248, 249, 0.96)); border-radius: 24px; border: 1px solid rgba(31, 111, 120, 0.08); }
+        .crm-table td { vertical-align: middle; }
+        .crm-overdue { border-left: 4px solid #dc3545 !important; }
+        footer { color: var(--muted); }
     </style>
 </head>
 <body>
@@ -126,8 +75,10 @@
             </button>
             <div class="collapse navbar-collapse" id="navMain">
                 <ul class="navbar-nav ms-auto align-items-lg-center gap-lg-2">
-                    <li class="nav-item"><a class="nav-link" href="{{ route('caregivers.index') }}">Каталог сиделок</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{{ route('news.index') }}">Новости</a></li>
+                    @guest
+                        <li class="nav-item"><a class="nav-link" href="{{ route('caregivers.index') }}">Каталог сиделок</a></li>
+                        <li class="nav-item"><a class="nav-link" href="{{ route('news.index') }}">Новости</a></li>
+                    @endguest
 
                     @auth
                         @if(auth()->user()->isClient())
@@ -136,8 +87,12 @@
                         @elseif(auth()->user()->isCaregiver())
                             <li class="nav-item"><a class="btn btn-dark rounded-pill px-4" href="{{ route('caregiver.dashboard') }}">Мой кабинет</a></li>
                             <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('caregiver.legal') }}">Документы</a></li>
+                        @elseif(auth()->user()->isCrm())
+                            <li class="nav-item"><a class="btn btn-dark rounded-pill px-4" href="{{ route('crm.dashboard') }}">CRM</a></li>
+                            <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('crm.people.index') }}">Люди</a></li>
                         @elseif(auth()->user()->isAdmin())
-                            <li class="nav-item"><a class="btn btn-dark rounded-pill px-4" href="{{ route('admin.dashboard') }}">Админка</a></li>
+                            <li class="nav-item"><a class="btn btn-dark rounded-pill px-4" href="{{ route('crm.dashboard') }}">CRM</a></li>
+                            <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('admin.dashboard') }}">Админка</a></li>
                         @endif
                         <li class="nav-item">
                             <form action="{{ route('logout') }}" method="POST" class="d-inline">
