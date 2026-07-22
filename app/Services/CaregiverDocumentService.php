@@ -46,17 +46,30 @@ class CaregiverDocumentService
             $days = today()->diffInDays($document->expires_at, false);
 
             if ($days <= 30 && $days > 14 && ! $document->reminder_30_at) {
-                $created += $this->createTask($document, '30', 'normal', $document->expires_at->copy()->subDays(25));
+                $created += $this->createTask(
+                    $document,
+                    '30',
+                    'normal',
+                    $document->expires_at->copy()->subDays(14)->endOfDay(),
+                );
                 $document->update(['reminder_30_at' => now()]);
             }
+
             if ($days <= 14 && $days > 3 && ! $document->reminder_14_at) {
-                $created += $this->createTask($document, '14', 'high', $document->expires_at->copy()->subDays(10));
+                $created += $this->createTask(
+                    $document,
+                    '14',
+                    'high',
+                    $document->expires_at->copy()->subDays(3)->endOfDay(),
+                );
                 $document->update(['reminder_14_at' => now()]);
             }
+
             if ($days <= 3 && $days >= 0 && ! $document->reminder_3_at) {
-                $created += $this->createTask($document, '3', 'urgent', $document->expires_at);
+                $created += $this->createTask($document, '3', 'urgent', $document->expires_at->copy()->endOfDay());
                 $document->update(['reminder_3_at' => now()]);
             }
+
             if ($days < 0 && ! $document->expired_task_at) {
                 $created += $this->createTask($document, 'expired', 'urgent', now());
                 $document->update(['expired_task_at' => now()]);
