@@ -3,20 +3,43 @@
     $crmCaregiver = $crmRequest->caregiverUser;
     $crmOrder = $crmRequest->order;
 
+    $activeFramework = function ($query, string $type) {
+        $query->where('type', $type)
+            ->where(function ($statusQuery) {
+                $statusQuery->where('status', \App\Models\LegalContract::STATUS_SIGNED)
+                    ->orWhere(function ($activeQuery) {
+                        $activeQuery->where('status', \App\Models\LegalContract::STATUS_AWAITING)
+                            ->where(function ($expiryQuery) {
+                                $expiryQuery->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                            });
+                    });
+            });
+    };
+
     $clientFramework = $crmClient?->legalContractParties()
-        ->whereHas('contract', fn($query) => $query->where('type', \App\Models\LegalContract::TYPE_CLIENT_AGENCY))
+        ->whereHas('contract', fn($query) => $activeFramework($query, \App\Models\LegalContract::TYPE_CLIENT_AGENCY))
         ->with('contract.parties.signature')
         ->latest('id')
         ->first()?->contract;
 
     $caregiverFramework = $crmCaregiver?->legalContractParties()
-        ->whereHas('contract', fn($query) => $query->where('type', \App\Models\LegalContract::TYPE_CAREGIVER_AGENCY))
+        ->whereHas('contract', fn($query) => $activeFramework($query, \App\Models\LegalContract::TYPE_CAREGIVER_AGENCY))
         ->with('contract.parties.signature')
         ->latest('id')
         ->first()?->contract;
 
     $crmOrderContracts = $crmOrder
-        ? \App\Models\LegalContract::where('order_id', $crmOrder->id)->where('type', \App\Models\LegalContract::TYPE_ORDER_SERVICE)->with('parties.signature')->get()
+        ? \App\Models\LegalContract::where('order_id', $crmOrder->id)
+            ->where('type', \App\Models\LegalContract::TYPE_ORDER_SERVICE)
+            ->whereIn('status', [\App\Models\LegalContract::STATUS_AWAITING, \App\Models\LegalContract::STATUS_SIGNED])
+            ->where(function ($query) {
+                $query->where('status', \App\Models\LegalContract::STATUS_SIGNED)
+                    ->orWhereNull('expires_at')
+                    ->orWhere('expires_at', '>', now());
+            })
+            ->with('parties.signature')
+            ->latest('id')
+            ->get()
         : collect();
 @endphp
 
@@ -79,7 +102,7 @@
                     @if(! $crmOrder)
                         <p class="small text-secondary mt-2 mb-0">Сначала преобразуйте заявку в заказ.</p>
                     @elseif($crmOrderContracts->isEmpty())
-                        <p class="small text-secondary mt-2 mb-0">Документ ещё не сформирован.</p>
+                        <p class="small text-secondary mt-2 mb-0">Действующий документ ещё не сформирован.</p>
                     @else
                         @foreach($crmOrderContracts as $legalContract)
                             <div class="border-top pt-2 mt-2">
