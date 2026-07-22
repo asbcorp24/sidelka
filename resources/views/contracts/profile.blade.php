@@ -2,6 +2,9 @@
 
 @php($title = 'Документы и договорные данные')
 @php($contract = $user->contractProfile)
+@php($frameworkType = $user->isCaregiver() ? \App\Models\LegalContract::TYPE_CAREGIVER_AGENCY : \App\Models\LegalContract::TYPE_CLIENT_AGENCY)
+@php($frameworkParty = $user->legalContractParties()->whereHas('contract', fn($query) => $query->where('type', $frameworkType))->with('contract.parties.signature')->latest('id')->first())
+@php($frameworkContract = $frameworkParty?->contract)
 
 @section('content')
 <div class="container py-4 py-lg-5">
@@ -10,11 +13,41 @@
             <div class="text-uppercase small text-secondary">Юридический раздел</div>
             <h1 class="section-title mb-0">Данные для договора {{ $roleLabel }}</h1>
         </div>
-        <a href="{{ $contractPreviewRoute }}" class="btn btn-dark rounded-pill px-4" target="_blank">Открыть договор</a>
+        <div class="d-flex gap-2 flex-wrap">
+            @if($frameworkContract)
+                <a href="{{ route('legal.contracts.show', $frameworkContract) }}" class="btn btn-dark rounded-pill px-4">Открыть онлайн-договор</a>
+            @endif
+            <a href="{{ $contractPreviewRoute }}" class="btn btn-outline-dark rounded-pill px-4" target="_blank">Черновик PDF</a>
+        </div>
     </div>
 
     <div class="row g-4">
         <div class="col-lg-8">
+            <div class="card-soft p-4 mb-4">
+                <h2 class="h4 mb-3">Рамочный агентский договор</h2>
+                <p class="text-secondary">Площадка организует подбор, документы и расчеты, но услуги ухода оказывает независимая сиделка. Конкретный договор по заказу заключается напрямую между заказчиком и сиделкой.</p>
+                @if($frameworkContract)
+                    <div class="border rounded-4 p-3">
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                            <div>
+                                <strong>{{ $frameworkContract->title }}</strong>
+                                <div class="small text-secondary">{{ $frameworkContract->number }} • версия {{ $frameworkContract->version }}</div>
+                            </div>
+                            <span class="badge {{ $frameworkContract->status === 'signed' ? 'text-bg-success' : 'text-bg-warning' }}">
+                                {{ $frameworkContract->status === 'signed' ? 'Подписан' : 'Ожидает подписи' }}
+                            </span>
+                        </div>
+                        <a href="{{ route('legal.contracts.show', $frameworkContract) }}" class="btn btn-outline-dark rounded-pill mt-3">Просмотреть и подписать</a>
+                    </div>
+                @else
+                    <form action="{{ route('legal.framework.create') }}" method="POST">
+                        @csrf
+                        <button class="btn btn-dark rounded-pill px-4">Сформировать агентский договор</button>
+                    </form>
+                    <div class="small text-secondary mt-2">Перед формированием заполните ФИО, паспорт, адрес и контактные данные. Для сиделки также нужны ИНН и налоговый статус.</div>
+                @endif
+            </div>
+
             <div class="card-soft p-4">
                 <h2 class="h4 mb-3">Договорные данные</h2>
                 <form action="{{ route('contracts.profile.update') }}" method="POST" class="row g-3">
@@ -119,13 +152,14 @@
         <div class="col-lg-4">
             <div class="card-soft p-4 mb-4">
                 <h2 class="h4 mb-3">Документы</h2>
-                <form action="{{ route('contracts.document.store') }}" method="POST" class="row g-3 mb-4">
+                <form action="{{ route('contracts.document.store') }}" method="POST" enctype="multipart/form-data" class="row g-3 mb-4">
                     @csrf
                     <div class="col-12"><input type="text" name="document_type" class="form-control" placeholder="Тип документа"></div>
                     <div class="col-12"><input type="text" name="title" class="form-control" placeholder="Название документа"></div>
                     <div class="col-12"><input type="text" name="document_number" class="form-control" placeholder="Номер"></div>
-                    <div class="col-md-6"><input type="date" name="issued_at" class="form-control" placeholder="Дата выдачи"></div>
-                    <div class="col-md-6"><input type="date" name="expires_at" class="form-control" placeholder="Срок действия"></div>
+                    <div class="col-12"><input type="file" name="scan" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.webp"></div>
+                    <div class="col-md-6"><input type="date" name="issued_at" class="form-control"></div>
+                    <div class="col-md-6"><input type="date" name="expires_at" class="form-control"></div>
                     <div class="col-12"><input type="text" name="verification_status" class="form-control" placeholder="Статус проверки"></div>
                     <div class="col-12"><textarea name="notes" class="form-control" rows="2" placeholder="Комментарий"></textarea></div>
                     <div class="col-12"><button class="btn btn-outline-dark rounded-pill px-4">Добавить документ</button></div>
@@ -145,14 +179,14 @@
             </div>
 
             <div class="card-soft p-4">
-                <h2 class="h4 mb-3">Что собираем</h2>
-                <ul class="mb-0">
-                    <li>паспортные данные для договора</li>
-                    <li>адрес регистрации и проживания</li>
-                    <li>ИНН, СНИЛС и налоговый статус</li>
-                    <li>банковские реквизиты для выплат</li>
-                    <li>отдельный список документов и статусов проверки</li>
-                </ul>
+                <h2 class="h4 mb-3">Как подписывается</h2>
+                <ol class="mb-0 ps-3">
+                    <li>система формирует неизменяемую версию;</li>
+                    <li>вы читаете полный текст;</li>
+                    <li>код приходит на телефон или email;</li>
+                    <li>код связывается с хешем документа;</li>
+                    <li>PDF и протокол остаются в кабинете.</li>
+                </ol>
             </div>
         </div>
     </div>
