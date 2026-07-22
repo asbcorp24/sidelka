@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\LegalContract;
-use App\Models\LegalContractParty;
 use App\Models\Order;
 use App\Models\OrderScheduleSlot;
 use App\Models\User;
@@ -27,10 +26,27 @@ class LegalContractService
             ? LegalContract::TYPE_CLIENT_AGENCY
             : LegalContract::TYPE_CAREGIVER_AGENCY;
 
+        LegalContract::query()
+            ->where('type', $type)
+            ->where('status', LegalContract::STATUS_AWAITING)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now())
+            ->whereHas('parties', fn ($query) => $query->where('user_id', $user->id))
+            ->update(['status' => LegalContract::STATUS_SUPERSEDED]);
+
         $existing = LegalContract::query()
             ->where('type', $type)
-            ->whereIn('status', [LegalContract::STATUS_AWAITING, LegalContract::STATUS_SIGNED])
             ->whereHas('parties', fn ($query) => $query->where('user_id', $user->id))
+            ->where(function ($query) {
+                $query->where('status', LegalContract::STATUS_SIGNED)
+                    ->orWhere(function ($active) {
+                        $active->where('status', LegalContract::STATUS_AWAITING)
+                            ->where(function ($notExpired) {
+                                $notExpired->whereNull('expires_at')
+                                    ->orWhere('expires_at', '>', now());
+                            });
+                    });
+            })
             ->latest('id')
             ->first();
 
@@ -38,7 +54,7 @@ class LegalContractService
             return $existing->load('parties.signature');
         }
 
-        $version = LegalContract::query()
+        $version = (int) LegalContract::query()
             ->where('type', $type)
             ->whereHas('parties', fn ($query) => $query->where('user_id', $user->id))
             ->max('version') + 1;
@@ -123,11 +139,29 @@ class LegalContractService
         return $caregivers->map(function (User $caregiver) use ($order, $actor) {
             $this->assertProfileComplete($caregiver);
 
+            LegalContract::query()
+                ->where('type', LegalContract::TYPE_ORDER_SERVICE)
+                ->where('order_id', $order->id)
+                ->where('meta->caregiver_id', $caregiver->id)
+                ->where('status', LegalContract::STATUS_AWAITING)
+                ->whereNotNull('expires_at')
+                ->where('expires_at', '<=', now())
+                ->update(['status' => LegalContract::STATUS_SUPERSEDED]);
+
             $existing = LegalContract::query()
                 ->where('type', LegalContract::TYPE_ORDER_SERVICE)
                 ->where('order_id', $order->id)
                 ->where('meta->caregiver_id', $caregiver->id)
-                ->whereIn('status', [LegalContract::STATUS_AWAITING, LegalContract::STATUS_SIGNED])
+                ->where(function ($query) {
+                    $query->where('status', LegalContract::STATUS_SIGNED)
+                        ->orWhere(function ($active) {
+                            $active->where('status', LegalContract::STATUS_AWAITING)
+                                ->where(function ($notExpired) {
+                                    $notExpired->whereNull('expires_at')
+                                        ->orWhere('expires_at', '>', now());
+                                });
+                        });
+                })
                 ->latest('id')
                 ->first();
 
@@ -135,7 +169,7 @@ class LegalContractService
                 return $existing->load('parties.signature');
             }
 
-            $version = LegalContract::query()
+            $version = (int) LegalContract::query()
                 ->where('type', LegalContract::TYPE_ORDER_SERVICE)
                 ->where('order_id', $order->id)
                 ->where('meta->caregiver_id', $caregiver->id)
@@ -230,7 +264,7 @@ class LegalContractService
                     $party->update(['status' => 'signed', 'signed_at' => now()]);
                     $party->signature()->create([
                         'legal_contract_id' => $contract->id,
-                        'user_id' => $actor->id,
+                        'user_id' => null,
                         'method' => 'platform_offer',
                         'channel' => 'system',
                         'destination' => config('legal.company.email'),
