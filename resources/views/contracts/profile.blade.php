@@ -1,10 +1,32 @@
 @extends('layouts.app')
 
-@php($title = 'Документы и договорные данные')
-@php($contract = $user->contractProfile)
-@php($frameworkType = $user->isCaregiver() ? \App\Models\LegalContract::TYPE_CAREGIVER_AGENCY : \App\Models\LegalContract::TYPE_CLIENT_AGENCY)
-@php($frameworkParty = $user->legalContractParties()->whereHas('contract', fn($query) => $query->where('type', $frameworkType))->with('contract.parties.signature')->latest('id')->first())
-@php($frameworkContract = $frameworkParty?->contract)
+@php
+    $title = 'Документы и договорные данные';
+    $contract = $user->contractProfile;
+    $frameworkType = $user->isCaregiver()
+        ? \App\Models\LegalContract::TYPE_CAREGIVER_AGENCY
+        : \App\Models\LegalContract::TYPE_CLIENT_AGENCY;
+
+    $frameworkParty = $user->legalContractParties()
+        ->whereHas('contract', function ($query) use ($frameworkType) {
+            $query->where('type', $frameworkType)
+                ->where(function ($statusQuery) {
+                    $statusQuery->where('status', \App\Models\LegalContract::STATUS_SIGNED)
+                        ->orWhere(function ($activeQuery) {
+                            $activeQuery->where('status', \App\Models\LegalContract::STATUS_AWAITING)
+                                ->where(function ($expiryQuery) {
+                                    $expiryQuery->whereNull('expires_at')
+                                        ->orWhere('expires_at', '>', now());
+                                });
+                        });
+                });
+        })
+        ->with('contract.parties.signature')
+        ->latest('id')
+        ->first();
+
+    $frameworkContract = $frameworkParty?->contract;
+@endphp
 
 @section('content')
 <div class="container py-4 py-lg-5">
