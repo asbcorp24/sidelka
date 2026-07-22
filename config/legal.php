@@ -22,6 +22,7 @@ return [
     'agent_commission_percent' => (float) env('LEGAL_AGENT_COMMISSION_PERCENT', 10),
     'contract_version' => (int) env('LEGAL_CONTRACT_VERSION', 1),
     'contract_lifetime_days' => (int) env('LEGAL_CONTRACT_LIFETIME_DAYS', 30),
+    'shift_auto_confirmation_hours' => (int) env('LEGAL_SHIFT_AUTO_CONFIRMATION_HOURS', 24),
 
     'signature' => [
         'channel' => env('LEGAL_SIGNATURE_CHANNEL', 'auto'),
