@@ -126,6 +126,7 @@ class ShiftDisputeController extends Controller
     public function addMessage(Request $request, ShiftDispute $shiftDispute): RedirectResponse
     {
         $user = $request->user();
+        $shiftDispute->loadMissing(['assignment', 'order']);
         $isParty = in_array($user->id, [
             $shiftDispute->opened_by_id,
             $shiftDispute->assignment?->caregiver_id,
@@ -189,14 +190,14 @@ class ShiftDisputeController extends Controller
             $act->update([
                 'status' => $data['decision'] === 'reject_payment'
                     ? ShiftAct::STATUS_CANCELLED
-                    : ShiftAct::STATUS_SIGNED,
-                'client_confirmed_at' => $act->client_confirmed_at ?: now(),
-                'signed_at' => $data['decision'] === 'reject_payment' ? null : now(),
+                    : ShiftAct::STATUS_RESOLVED,
                 'meta' => array_merge($act->meta ?? [], [
                     'resolved_by_id' => $request->user()->id,
+                    'resolved_at' => now()->toIso8601String(),
                     'dispute_decision' => $data['decision'],
                     'approved_gross_amount' => $approved,
                     'resolution' => $data['resolution'],
+                    'resolution_basis' => 'Решение уполномоченного сотрудника CRM по спору; не является подписью заказчика.',
                 ]),
             ]);
 
