@@ -101,6 +101,8 @@ class AgentCommissionTest extends TestCase
             'paid_at' => null,
         ]);
 
+        $this->assertSame('payout_pending', $order->fresh()->payment_status);
+
         $this->assertDatabaseHas('agent_commissions', [
             'order_id' => $order->id,
             'caregiver_id' => $caregiver->id,
@@ -128,5 +130,6 @@ class AgentCommissionTest extends TestCase
             'external_reference' => 'BANK-TEST-123',
         ]);
         $this->assertNotNull($payout->fresh()->paid_at);
+        $this->assertSame('released', $order->fresh()->payment_status);
     }
 }
