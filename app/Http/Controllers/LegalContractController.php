@@ -25,7 +25,7 @@ class LegalContractController extends Controller
 
     public function index(Request $request): View
     {
-        abort_unless($request->user()->isAdmin() || $request->user()->isCrm(), 403);
+        abort_unless($request->user()->hasStaffPermission('crm.contracts.manage'), 403);
 
         $query = LegalContract::query()
             ->with(['parties.signature', 'order.client', 'order.caregiver'])
@@ -34,11 +34,9 @@ class LegalContractController extends Controller
         if ($request->filled('status')) {
             $query->where('status', (string) $request->input('status'));
         }
-
         if ($request->filled('type')) {
             $query->where('type', (string) $request->input('type'));
         }
-
         if ($request->filled('q')) {
             $term = trim((string) $request->input('q'));
             $query->where(function ($search) use ($term) {
@@ -58,12 +56,9 @@ class LegalContractController extends Controller
                 'awaiting' => LegalContract::where('status', LegalContract::STATUS_AWAITING)->count(),
                 'signed' => LegalContract::where('status', LegalContract::STATUS_SIGNED)->count(),
                 'expired' => LegalContract::where('status', LegalContract::STATUS_AWAITING)
-                    ->whereNotNull('expires_at')
-                    ->where('expires_at', '<=', now())
-                    ->count(),
+                    ->whereNotNull('expires_at')->where('expires_at', '<=', now())->count(),
                 'commission_month' => AgentCommission::where('status', 'recognized')
-                    ->where('recognized_at', '>=', now()->startOfMonth())
-                    ->sum('amount'),
+                    ->where('recognized_at', '>=', now()->startOfMonth())->sum('amount'),
                 'commission_total' => AgentCommission::where('status', 'recognized')->sum('amount'),
             ],
         ]);
@@ -79,8 +74,7 @@ class LegalContractController extends Controller
 
     public function createFrameworkForUser(Request $request, User $user): RedirectResponse
     {
-        abort_unless($request->user()->isAdmin() || $request->user()->isCrm(), 403);
-
+        abort_unless($request->user()->hasStaffPermission('crm.contracts.manage'), 403);
         $contract = $this->contracts->createFramework($user, $request->user());
 
         return redirect()->route('legal.contracts.show', $contract)
@@ -90,7 +84,6 @@ class LegalContractController extends Controller
     public function createOrder(Request $request, Order $order): RedirectResponse
     {
         $this->authorizeOrder($request, $order);
-
         $contracts = $this->contracts->createOrderContracts($order, $request->user());
         $first = $contracts->first();
 
@@ -102,7 +95,6 @@ class LegalContractController extends Controller
     {
         $this->authorizeContract($request, $legalContract);
         $legalContract->load(['parties.signature', 'order', 'events.actor']);
-
         $party = $legalContract->parties->firstWhere('user_id', $request->user()->id);
 
         return view('contracts.online-show', [
@@ -127,9 +119,7 @@ class LegalContractController extends Controller
         $data = $request->validate([
             'code' => ['required', 'digits:6'],
             'accept' => ['accepted'],
-        ], [
-            'accept.accepted' => 'Нужно подтвердить согласие с условиями договора.',
-        ]);
+        ], ['accept.accepted' => 'Нужно подтвердить согласие с условиями договора.']);
 
         $party = $legalContract->parties()->where('user_id', $request->user()->id)->firstOrFail();
         $contract = $this->signatures->sign($party, $data['code'], $request);
@@ -154,7 +144,6 @@ class LegalContractController extends Controller
     public function publicRequestCode(Request $request, LegalContractParty $legalContractParty): RedirectResponse
     {
         $result = $this->signatures->sendCode($legalContractParty, $request);
-
         return back()->with('status', 'Код отправлен через ' . $result['channel'] . ' на ' . $result['destination'] . '.');
     }
 
@@ -163,9 +152,7 @@ class LegalContractController extends Controller
         $data = $request->validate([
             'code' => ['required', 'digits:6'],
             'accept' => ['accepted'],
-        ], [
-            'accept.accepted' => 'Нужно подтвердить согласие с условиями договора.',
-        ]);
+        ], ['accept.accepted' => 'Нужно подтвердить согласие с условиями договора.']);
 
         $contract = $this->signatures->sign($legalContractParty, $data['code'], $request);
 
@@ -177,7 +164,7 @@ class LegalContractController extends Controller
 
     public function staffSendCode(Request $request, LegalContractParty $legalContractParty): RedirectResponse
     {
-        abort_unless($request->user()->isAdmin() || $request->user()->isCrm(), 403);
+        abort_unless($request->user()->hasStaffPermission('crm.contracts.manage'), 403);
         $result = $this->signatures->sendCode($legalContractParty, $request);
 
         return back()->with('status', 'Код отправлен стороне через ' . $result['channel'] . ' на ' . $result['destination'] . '. Код сотруднику не показывается.');
@@ -186,7 +173,6 @@ class LegalContractController extends Controller
     public function download(Request $request, LegalContract $legalContract): Response
     {
         $this->authorizeContract($request, $legalContract);
-
         return $this->pdf($legalContract);
     }
 
@@ -206,7 +192,6 @@ class LegalContractController extends Controller
     private function pdf(LegalContract $contract): Response
     {
         $contract->load(['parties.signature']);
-
         return Pdf::loadView('contracts.online-pdf', ['contract' => $contract])
             ->setPaper('a4')
             ->download('contract-' . $contract->number . '.pdf');
@@ -218,7 +203,7 @@ class LegalContractController extends Controller
 
         abort_unless(
             $user->isAdmin()
-            || $user->isCrm()
+            || ($user->isCrm() && $user->hasStaffPermission('crm.contracts.manage'))
             || $contract->parties()->where('user_id', $user->id)->exists(),
             403
         );
@@ -230,7 +215,7 @@ class LegalContractController extends Controller
 
         abort_unless(
             $user->isAdmin()
-            || $user->isCrm()
+            || ($user->isCrm() && $user->hasStaffPermission('crm.contracts.manage'))
             || $order->client_id === $user->id
             || $order->caregiver_id === $user->id
             || $order->caregiverAssignments()->where('caregiver_id', $user->id)->exists(),
