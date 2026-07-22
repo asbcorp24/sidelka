@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AgentCommission;
 use App\Models\LegalContract;
 use App\Models\LegalContractParty;
 use App\Models\Order;
@@ -20,6 +21,52 @@ class LegalContractController extends Controller
         private LegalContractService $contracts,
         private LegalSignatureService $signatures,
     ) {
+    }
+
+    public function index(Request $request): View
+    {
+        abort_unless($request->user()->isAdmin() || $request->user()->isCrm(), 403);
+
+        $query = LegalContract::query()
+            ->with(['parties.signature', 'order.client', 'order.caregiver'])
+            ->latest('id');
+
+        if ($request->filled('status')) {
+            $query->where('status', (string) $request->input('status'));
+        }
+
+        if ($request->filled('type')) {
+            $query->where('type', (string) $request->input('type'));
+        }
+
+        if ($request->filled('q')) {
+            $term = trim((string) $request->input('q'));
+            $query->where(function ($search) use ($term) {
+                $search->where('number', 'like', "%{$term}%")
+                    ->orWhere('title', 'like', "%{$term}%")
+                    ->orWhereHas('parties', function ($partyQuery) use ($term) {
+                        $partyQuery->where('name', 'like', "%{$term}%")
+                            ->orWhere('phone', 'like', "%{$term}%")
+                            ->orWhere('email', 'like', "%{$term}%");
+                    });
+            });
+        }
+
+        return view('contracts.registry', [
+            'contracts' => $query->paginate(40)->withQueryString(),
+            'stats' => [
+                'awaiting' => LegalContract::where('status', LegalContract::STATUS_AWAITING)->count(),
+                'signed' => LegalContract::where('status', LegalContract::STATUS_SIGNED)->count(),
+                'expired' => LegalContract::where('status', LegalContract::STATUS_AWAITING)
+                    ->whereNotNull('expires_at')
+                    ->where('expires_at', '<=', now())
+                    ->count(),
+                'commission_month' => AgentCommission::where('status', 'recognized')
+                    ->where('recognized_at', '>=', now()->startOfMonth())
+                    ->sum('amount'),
+                'commission_total' => AgentCommission::where('status', 'recognized')->sum('amount'),
+            ],
+        ]);
     }
 
     public function createFramework(Request $request): RedirectResponse
