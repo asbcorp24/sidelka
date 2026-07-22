@@ -26,7 +26,6 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
-
         'api' => [
             // \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             'throttle:api',
@@ -46,6 +45,7 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'role' => \App\Http\Middleware\RoleMiddleware::class,
         'crm.permission' => \App\Http\Middleware\CrmPermissionMiddleware::class,
+        'caregiver.documents' => \App\Http\Middleware\RequireCaregiverDocuments::class,
         'signed.order.contracts' => \App\Http\Middleware\RequireSignedOrderContracts::class,
     ];
 }
