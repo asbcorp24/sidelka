@@ -129,6 +129,9 @@
             @if(isset($order) && $order instanceof \App\Models\Order)
                 @include('contracts.order-panel')
             @endif
+            @if(isset($crmRequest) && $crmRequest instanceof \App\Models\CrmRequest)
+                @include('contracts.crm-panel')
+            @endif
         @endauth
 
         @yield('content')
