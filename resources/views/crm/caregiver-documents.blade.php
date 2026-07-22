@@ -9,7 +9,18 @@
         @forelse($documents as $document)
             @php($expired = $document->isExpired())
             <form action="{{ route('crm.caregiver-documents.update',$document) }}" method="POST" class="border rounded-4 p-3 mb-3 {{ $expired ? 'border-danger border-2' : '' }}">@csrf @method('PATCH')
-                <div class="d-flex justify-content-between align-items-start flex-wrap gap-3"><div><strong>{{ $document->user?->name }} — {{ $document->title }}</strong><div class="small text-secondary">{{ $document->document_type }} • № {{ $document->document_number ?: 'не указан' }} • срок {{ $document->expires_at?->format('d.m.Y') ?: 'бессрочно' }}</div></div><span class="badge {{ $expired ? 'text-bg-danger' : ($document->verification_status === 'verified' ? 'text-bg-success' : 'text-bg-warning') }}">{{ $expired ? 'Просрочен' : $document->verification_status }}</span></div>
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                    <div>
+                        <strong>{{ $document->user?->name }} — {{ $document->title }}</strong>
+                        <div class="small text-secondary">{{ $document->document_type }} • № {{ $document->document_number ?: 'не указан' }} • срок {{ $document->expires_at?->format('d.m.Y') ?: 'бессрочно' }}</div>
+                        @if($document->file_path)
+                            <a href="{{ route('contracts.document.download',$document) }}" class="btn btn-sm btn-outline-dark rounded-pill mt-2">Открыть скан</a>
+                        @else
+                            <span class="badge text-bg-secondary mt-2">Файл не загружен</span>
+                        @endif
+                    </div>
+                    <span class="badge {{ $expired ? 'text-bg-danger' : ($document->verification_status === 'verified' ? 'text-bg-success' : 'text-bg-warning') }}">{{ $expired ? 'Просрочен' : $document->verification_status }}</span>
+                </div>
                 <div class="row g-3 mt-1"><div class="col-md-3"><label class="form-label small">Проверка</label><select name="verification_status" class="form-select"><option value="pending" {{ $document->verification_status==='pending'?'selected':'' }}>На проверке</option><option value="verified" {{ $document->verification_status==='verified'?'selected':'' }}>Проверен</option><option value="rejected" {{ $document->verification_status==='rejected'?'selected':'' }}>Отклонён</option></select></div><div class="col-md-3"><label class="form-label small">Срок действия</label><input type="date" name="expires_at" class="form-control" value="{{ $document->expires_at?->format('Y-m-d') }}"></div><div class="col-md-2"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="is_required" value="1" {{ $document->is_required?'checked':'' }}><span>Обязательный</span></label></div><div class="col-md-2"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="blocks_assignments" value="1" {{ $document->blocks_assignments?'checked':'' }}><span>Блокирует смены</span></label></div><div class="col-md-2 d-flex align-items-end"><button class="btn btn-outline-dark w-100">Сохранить</button></div><div class="col-12"><textarea name="notes" class="form-control" rows="2" placeholder="Комментарий проверки">{{ $document->notes }}</textarea></div></div>
             </form>
         @empty
