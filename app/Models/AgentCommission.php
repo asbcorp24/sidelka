@@ -12,6 +12,7 @@ class AgentCommission extends Model
 
     protected $fillable = [
         'order_id',
+        'order_caregiver_assignment_id',
         'payment_id',
         'payout_id',
         'caregiver_id',
@@ -31,6 +32,11 @@ class AgentCommission extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function assignment(): BelongsTo
+    {
+        return $this->belongsTo(OrderCaregiverAssignment::class, 'order_caregiver_assignment_id');
     }
 
     public function payment(): BelongsTo
