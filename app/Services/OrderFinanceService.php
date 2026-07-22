@@ -6,7 +6,9 @@ use App\Models\AgentCommission;
 use App\Models\LegalContract;
 use App\Models\MarketplaceNotification;
 use App\Models\Order;
+use App\Models\OrderCaregiverAssignment;
 use App\Models\OrderExpense;
+use App\Models\OrderScheduleSlot;
 use App\Models\Payment;
 use App\Models\Payout;
 use App\Models\Refund;
@@ -83,22 +85,116 @@ class OrderFinanceService
         return $payment;
     }
 
-    public function releaseHeldPayments(Order $order): void
+    public function releaseAssignmentPayout(OrderCaregiverAssignment $assignment, ?User $actor = null): Payout
     {
-        $order->loadMissing(['payments', 'caregiver', 'caregiverAssignments.caregiver', 'caregiverAssignments.scheduleSlot']);
+        return DB::transaction(function () use ($assignment, $actor) {
+            $lockedAssignment = OrderCaregiverAssignment::query()
+                ->whereKey($assignment->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        foreach ($order->payments->where('status', 'held') as $payment) {
-            $payment->update([
-                'status' => 'released',
-                'released_at' => now(),
-            ]);
+            $lockedAssignment->loadMissing(['order.scheduleSlots', 'order.payments', 'scheduleSlot', 'caregiver']);
+            $order = $lockedAssignment->order;
 
-            if ($payment->kind === 'base_order' && $order->allows_multiple_caregivers) {
-                $this->releaseMultiCaregiverPayouts($order, $payment);
-                continue;
+            abort_unless(in_array($order->status, ['in_progress', 'completed'], true), 422);
+            abort_unless(in_array($lockedAssignment->status, ['accepted', 'completion_requested', 'completed'], true), 422);
+
+            $existing = Payout::query()
+                ->where('order_caregiver_assignment_id', $lockedAssignment->id)
+                ->first();
+
+            if ($existing) {
+                return $existing;
             }
 
-            $caregiverId = $payment->caregiver_id ?: $order->caregiver_id;
+            $this->assertSignedOrderContract($order, (int) $lockedAssignment->caregiver_id);
+
+            $payment = Payment::query()
+                ->where('order_id', $order->id)
+                ->where('kind', 'base_order')
+                ->whereIn('status', ['held', 'partially_released', 'released'])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $payment) {
+                throw ValidationException::withMessages([
+                    'payout' => 'Основная оплата заказа не была удержана.',
+                ]);
+            }
+
+            $grossAmount = $this->assignmentGrossAmount($lockedAssignment, $payment);
+            $alreadyReleased = (int) Payout::query()
+                ->where('payment_id', $payment->id)
+                ->where('status', '!=', 'cancelled')
+                ->sum('gross_amount');
+            $remaining = max(0, (int) $payment->amount - $alreadyReleased);
+            $grossAmount = min($grossAmount, $remaining);
+
+            if ($grossAmount <= 0) {
+                throw ValidationException::withMessages([
+                    'payout' => 'По основной оплате заказа не осталось средств для этой смены.',
+                ]);
+            }
+
+            $payout = $this->createPayout(
+                order: $order,
+                payment: $payment,
+                caregiverId: (int) $lockedAssignment->caregiver_id,
+                grossAmount: $grossAmount,
+                applyCommission: true,
+                assignmentId: $lockedAssignment->id,
+            );
+
+            $lockedAssignment->update([
+                'status' => 'completed',
+                'client_confirmed_at' => $lockedAssignment->client_confirmed_at ?: now(),
+                'completed_at' => $lockedAssignment->completed_at ?: now(),
+                'payout_generated_at' => now(),
+            ]);
+
+            $this->syncBasePaymentStatus($payment);
+            $this->releaseCaregiverExpensePayments($order, (int) $lockedAssignment->caregiver_id);
+            $this->syncOrderPaymentStatus($order);
+
+            $this->notify(
+                $lockedAssignment->caregiver,
+                'shift.payout_created',
+                'Выплата за смену сформирована',
+                'Смена по заказу «' . $order->title . '» подтверждена. К выплате: '
+                    . number_format($payout->amount, 0, ',', ' ') . ' ₽. Перевод ожидает обработки.',
+                [
+                    'order_id' => $order->id,
+                    'assignment_id' => $lockedAssignment->id,
+                    'payout_id' => $payout->id,
+                    'actor_id' => $actor?->id,
+                ],
+            );
+
+            return $payout;
+        });
+    }
+
+    public function releaseHeldPayments(Order $order): void
+    {
+        $order->loadMissing([
+            'payments',
+            'caregiver',
+            'caregiverAssignments.caregiver',
+            'caregiverAssignments.scheduleSlot',
+            'scheduleSlots',
+        ]);
+
+        $basePayment = $order->payments->firstWhere('kind', 'base_order');
+
+        if ($basePayment && $order->caregiverAssignments->isNotEmpty()) {
+            foreach ($order->caregiverAssignments->where('status', 'completed') as $assignment) {
+                $this->releaseAssignmentPayout($assignment);
+            }
+
+            $this->syncBasePaymentStatus($basePayment->fresh());
+        } elseif ($basePayment && in_array($basePayment->status, ['held', 'partially_released'], true)) {
+            $caregiverId = $basePayment->caregiver_id ?: $order->caregiver_id;
+
             if (! $caregiverId) {
                 throw ValidationException::withMessages([
                     'payout' => 'Невозможно сформировать выплату: у платежа не определена сиделка.',
@@ -107,11 +203,53 @@ class OrderFinanceService
 
             $this->createPayout(
                 order: $order,
+                payment: $basePayment,
+                caregiverId: (int) $caregiverId,
+                grossAmount: (int) $basePayment->amount,
+                applyCommission: true,
+            );
+
+            $basePayment->update(['status' => 'released', 'released_at' => now()]);
+        }
+
+        foreach ($order->payments->where('kind', '!=', 'base_order')->whereIn('status', ['held', 'partially_released']) as $payment) {
+            $caregiverId = $payment->caregiver_id ?: $order->caregiver_id;
+            if (! $caregiverId) {
+                continue;
+            }
+
+            $this->createPayout(
+                order: $order,
                 payment: $payment,
                 caregiverId: (int) $caregiverId,
                 grossAmount: (int) $payment->amount,
-                applyCommission: $payment->kind === 'base_order',
+                applyCommission: false,
             );
+
+            $payment->update(['status' => 'released', 'released_at' => now()]);
+        }
+
+        $this->syncOrderPaymentStatus($order);
+    }
+
+    public function syncOrderPaymentStatus(Order $order): void
+    {
+        $hasPendingPayouts = $order->payouts()->whereIn('status', ['pending', 'processing'])->exists();
+        $hasPartiallyReleased = $order->payments()->where('status', 'partially_released')->exists();
+        $hasHeld = $order->payments()->where('status', 'held')->exists();
+        $hasPayments = $order->payments()->exists();
+        $allPayoutsPaid = ! $order->payouts()->whereNotIn('status', ['paid', 'cancelled'])->exists();
+
+        $status = match (true) {
+            $hasPendingPayouts => 'payout_pending',
+            $hasPartiallyReleased => 'partially_released',
+            $hasHeld => 'held',
+            $hasPayments && $allPayoutsPaid => 'released',
+            default => $order->payment_status,
+        };
+
+        if ($order->payment_status !== $status) {
+            $order->update(['payment_status' => $status]);
         }
     }
 
@@ -125,16 +263,22 @@ class OrderFinanceService
         };
 
         $refundAmount = 0;
-        $payoutAmount = 0;
+        $preservedPayoutAmount = (int) $order->payouts()
+            ->whereIn('status', ['pending', 'processing', 'paid'])
+            ->sum('amount');
 
-        foreach ($order->payments()->where('status', 'held')->get() as $payment) {
-            $refundAmount += $payment->amount;
-            $this->refundPayment($payment, $reason);
-        }
+        foreach ($order->payments()->whereIn('status', ['held', 'partially_released'])->get() as $payment) {
+            $releasedGross = (int) $payment->payouts()
+                ->where('status', '!=', 'cancelled')
+                ->sum('gross_amount');
+            $refundable = max(0, (int) $payment->amount - $releasedGross);
 
-        foreach ($order->payouts()->whereIn('status', ['pending', 'processing'])->get() as $payout) {
-            $payoutAmount += $payout->amount;
-            $payout->update(['status' => 'cancelled']);
+            if ($refundable > 0) {
+                $refundAmount += $refundable;
+                $this->refundPayment($payment, $reason, $refundable, $releasedGross > 0);
+            } elseif ($releasedGross > 0) {
+                $payment->update(['status' => 'released', 'released_at' => now()]);
+            }
         }
 
         $order->cancellations()->create([
@@ -143,12 +287,19 @@ class OrderFinanceService
             'reason' => $reason,
             'details' => $details,
             'refund_amount' => $refundAmount,
-            'payout_amount' => $payoutAmount,
+            'payout_amount' => $preservedPayoutAmount,
         ]);
+
+        $paymentStatus = match (true) {
+            $refundAmount > 0 && $preservedPayoutAmount > 0 => 'partially_refunded',
+            $refundAmount > 0 => 'refunded',
+            $preservedPayoutAmount > 0 => 'payout_pending',
+            default => 'cancelled',
+        };
 
         $order->update([
             'status' => 'cancelled',
-            'payment_status' => $refundAmount > 0 ? 'refunded' : 'cancelled',
+            'payment_status' => $paymentStatus,
             'cancelled_at' => now(),
         ]);
 
@@ -156,17 +307,8 @@ class OrderFinanceService
             $order->client,
             'order.cancelled',
             'Заказ отменен',
-            "Заказ «{$order->title}» отменен. Возврат: {$refundAmount} ₽."
+            "Заказ «{$order->title}» отменен. Возврат неиспользованного остатка: {$refundAmount} ₽."
         );
-
-        if ($order->caregiver) {
-            $this->notify(
-                $order->caregiver,
-                'order.cancelled',
-                'Заказ отменен',
-                "Заказ «{$order->title}» отменен."
-            );
-        }
     }
 
     public function notify(?User $user, string $type, string $title, string $body, array $data = []): void
@@ -228,49 +370,79 @@ class OrderFinanceService
         });
     }
 
-    private function releaseMultiCaregiverPayouts(Order $order, Payment $payment): void
+    private function assignmentGrossAmount(OrderCaregiverAssignment $assignment, Payment $payment): int
     {
-        $acceptedAssignments = $order->caregiverAssignments
-            ->whereIn('status', ['accepted', 'completed'])
-            ->filter(fn ($assignment) => $assignment->caregiver && $assignment->scheduleSlot)
+        $order = $assignment->order;
+        $slots = $order->scheduleSlots
+            ->sortBy(fn (OrderScheduleSlot $slot) => $slot->scheduled_date->format('Y-m-d') . ' ' . $slot->starts_at . ' ' . $slot->id)
             ->values();
 
-        if ($acceptedAssignments->isEmpty()) {
-            return;
+        if (! $assignment->scheduleSlot || $slots->isEmpty()) {
+            return max(0, (int) $payment->amount);
         }
 
-        $minutesByCaregiver = $acceptedAssignments
-            ->groupBy('caregiver_id')
-            ->map(function ($assignments) {
-                return $assignments->sum(function ($assignment) {
-                    $slot = $assignment->scheduleSlot;
-                    $start = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->starts_at);
-                    $end = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->ends_at);
+        $minutesBySlot = $slots->mapWithKeys(function (OrderScheduleSlot $slot) {
+            $start = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->starts_at);
+            $end = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->ends_at);
 
-                    return max(1, $start->diffInMinutes($end));
-                });
-            });
+            return [$slot->id => max(1, $start->diffInMinutes($end))];
+        });
 
-        $totalMinutes = max(1, (int) $minutesByCaregiver->sum());
-        $distributedGross = 0;
-        $caregiverIds = $minutesByCaregiver->keys()->values();
+        $totalMinutes = max(1, (int) $minutesBySlot->sum());
+        $distributed = 0;
+        $amounts = [];
 
-        foreach ($caregiverIds as $index => $caregiverId) {
-            $minutes = (int) $minutesByCaregiver[$caregiverId];
-            $grossAmount = $index === $caregiverIds->count() - 1
-                ? (int) $payment->amount - $distributedGross
-                : (int) floor((int) $payment->amount * ($minutes / $totalMinutes));
+        foreach ($slots as $index => $slot) {
+            $amount = $index === $slots->count() - 1
+                ? (int) $payment->amount - $distributed
+                : (int) floor((int) $payment->amount * ((int) $minutesBySlot[$slot->id] / $totalMinutes));
 
-            $distributedGross += $grossAmount;
+            $amounts[$slot->id] = max(0, $amount);
+            $distributed += $amounts[$slot->id];
+        }
 
+        return (int) ($amounts[$assignment->order_schedule_slot_id] ?? 0);
+    }
+
+    private function releaseCaregiverExpensePayments(Order $order, int $caregiverId): void
+    {
+        $payments = Payment::query()
+            ->where('order_id', $order->id)
+            ->where('kind', '!=', 'base_order')
+            ->where('caregiver_id', $caregiverId)
+            ->whereIn('status', ['held', 'partially_released'])
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($payments as $payment) {
             $this->createPayout(
                 order: $order,
                 payment: $payment,
-                caregiverId: (int) $caregiverId,
-                grossAmount: max(0, $grossAmount),
-                applyCommission: true,
+                caregiverId: $caregiverId,
+                grossAmount: (int) $payment->amount,
+                applyCommission: false,
             );
+
+            $payment->update(['status' => 'released', 'released_at' => now()]);
         }
+    }
+
+    private function syncBasePaymentStatus(Payment $payment): void
+    {
+        $releasedGross = (int) $payment->payouts()
+            ->where('status', '!=', 'cancelled')
+            ->sum('gross_amount');
+
+        $status = match (true) {
+            $releasedGross <= 0 => 'held',
+            $releasedGross >= (int) $payment->amount => 'released',
+            default => 'partially_released',
+        };
+
+        $payment->update([
+            'status' => $status,
+            'released_at' => $status === 'released' ? now() : null,
+        ]);
     }
 
     private function createPayout(
@@ -279,6 +451,7 @@ class OrderFinanceService
         int $caregiverId,
         int $grossAmount,
         bool $applyCommission,
+        ?int $assignmentId = null,
     ): Payout {
         $commissionPercent = $applyCommission
             ? $this->commissionPercentFor($order, $caregiverId)
@@ -288,13 +461,21 @@ class OrderFinanceService
             : 0;
         $netAmount = max(0, $grossAmount - $commissionAmount);
 
-        $payout = Payout::firstOrCreate(
-            [
+        $identity = $assignmentId
+            ? ['order_caregiver_assignment_id' => $assignmentId]
+            : [
                 'order_id' => $order->id,
                 'payment_id' => $payment->id,
                 'caregiver_id' => $caregiverId,
-            ],
+            ];
+
+        $payout = Payout::firstOrCreate(
+            $identity,
             [
+                'order_id' => $order->id,
+                'order_caregiver_assignment_id' => $assignmentId,
+                'payment_id' => $payment->id,
+                'caregiver_id' => $caregiverId,
                 'gross_amount' => $grossAmount,
                 'commission_percent' => $commissionPercent,
                 'commission_amount' => $commissionAmount,
@@ -311,6 +492,7 @@ class OrderFinanceService
                 [
                     'payment_id' => $payment->id,
                     'caregiver_id' => $caregiverId,
+                    'order_caregiver_assignment_id' => $assignmentId,
                 ],
                 [
                     'order_id' => $order->id,
@@ -325,16 +507,23 @@ class OrderFinanceService
             );
         }
 
-        if ($payout->wasRecentlyCreated) {
-            $this->notify(
-                User::find($caregiverId),
-                'payout.pending',
-                'Выплата сформирована',
-                "По заказу «{$order->title}» сформирована выплата {$netAmount} ₽. Комиссия площадки: {$commissionAmount} ₽. Перевод ожидает обработки."
-            );
-        }
-
         return $payout;
+    }
+
+    private function assertSignedOrderContract(Order $order, int $caregiverId): void
+    {
+        $signed = LegalContract::query()
+            ->where('type', LegalContract::TYPE_ORDER_SERVICE)
+            ->where('order_id', $order->id)
+            ->where('meta->caregiver_id', $caregiverId)
+            ->where('status', LegalContract::STATUS_SIGNED)
+            ->exists();
+
+        if (! $signed) {
+            throw ValidationException::withMessages([
+                'contract' => 'Нельзя сформировать выплату: договор с этой сиделкой ещё не подписан обеими сторонами.',
+            ]);
+        }
     }
 
     private function commissionPercentFor(Order $order, int $caregiverId): float
@@ -354,16 +543,16 @@ class OrderFinanceService
         return max(0, min(100, (float) $percent));
     }
 
-    private function refundPayment(Payment $payment, string $reason): void
+    private function refundPayment(Payment $payment, string $reason, int $amount, bool $partial): void
     {
         $client = $payment->client;
 
-        DB::transaction(function () use ($payment, $client, $reason) {
-            $client->increment('wallet_balance', $payment->amount);
+        DB::transaction(function () use ($payment, $client, $reason, $amount, $partial) {
+            $client->increment('wallet_balance', $amount);
             $client->refresh();
 
             $payment->update([
-                'status' => 'refunded',
+                'status' => $partial ? 'partially_refunded' : 'refunded',
                 'refunded_at' => now(),
             ]);
 
@@ -371,7 +560,7 @@ class OrderFinanceService
                 'order_id' => $payment->order_id,
                 'payment_id' => $payment->id,
                 'client_id' => $client->id,
-                'amount' => $payment->amount,
+                'amount' => $amount,
                 'currency' => $payment->currency,
                 'status' => 'completed',
                 'reason' => $reason,
@@ -382,9 +571,9 @@ class OrderFinanceService
                 'order_id' => $payment->order_id,
                 'payment_id' => $payment->id,
                 'type' => 'refund',
-                'amount' => $payment->amount,
+                'amount' => $amount,
                 'balance_after' => $client->wallet_balance,
-                'description' => "Возврат по заказу #{$payment->order_id}: {$reason}",
+                'description' => "Возврат неиспользованного остатка по заказу #{$payment->order_id}: {$reason}",
             ]);
         });
     }
