@@ -108,7 +108,7 @@ class ShiftCompletionController extends Controller
         abort_unless($user->isClient() && $order->client_id === $user->id, 404);
         abort_unless($order->status === 'in_progress', 422);
 
-        $order->loadMissing(['caregiverAssignments', 'conversations']);
+        $order->loadMissing(['scheduleSlots', 'caregiverAssignments', 'conversations']);
 
         $unfinished = $order->caregiverAssignments
             ->whereIn('status', ['invited', 'accepted', 'completion_requested']);
@@ -120,7 +120,21 @@ class ShiftCompletionController extends Controller
             ]);
         }
 
-        if ($order->caregiverAssignments->where('status', 'completed')->isEmpty()) {
+        $completedSlotIds = $order->caregiverAssignments
+            ->where('status', 'completed')
+            ->pluck('order_schedule_slot_id')
+            ->filter()
+            ->unique();
+        $uncoveredSlotIds = $order->scheduleSlots->pluck('id')->diff($completedSlotIds);
+
+        if ($uncoveredSlotIds->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'shift' => 'Нельзя закрыть заказ: не завершено или не назначено календарных смен: '
+                    . $uncoveredSlotIds->count() . '.',
+            ]);
+        }
+
+        if ($completedSlotIds->isEmpty()) {
             throw ValidationException::withMessages([
                 'shift' => 'Нельзя закрыть заказ без хотя бы одной завершенной смены.',
             ]);
