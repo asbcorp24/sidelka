@@ -54,6 +54,17 @@
 
                     <div class="border rounded-4 p-3 mb-3">
                         <div class="d-flex justify-content-between"><span>Заказ</span><strong>#{{ $payout->order_id }} {{ $payout->order?->title }}</strong></div>
+                        @if($payout->assignment?->scheduleSlot)
+                            <div class="d-flex justify-content-between mt-2">
+                                <span>Смена</span>
+                                <strong>
+                                    {{ $payout->assignment->scheduleSlot->scheduled_date->format('d.m.Y') }}
+                                    {{ substr($payout->assignment->scheduleSlot->starts_at, 0, 5) }}–{{ substr($payout->assignment->scheduleSlot->ends_at, 0, 5) }}
+                                </strong>
+                            </div>
+                        @elseif($payout->payment?->kind !== 'base_order')
+                            <div class="d-flex justify-content-between mt-2"><span>Основание</span><strong>Подтвержденный дополнительный расход</strong></div>
+                        @endif
                         <div class="d-flex justify-content-between mt-2"><span>Начислено</span><strong>{{ number_format($payout->gross_amount ?? $payout->amount, 0, ',', ' ') }} ₽</strong></div>
                         <div class="d-flex justify-content-between mt-2"><span>Комиссия {{ number_format($payout->commission_percent, 2, ',', ' ') }}%</span><strong>{{ number_format($payout->commission_amount, 0, ',', ' ') }} ₽</strong></div>
                         <div class="d-flex justify-content-between border-top pt-2 mt-2"><span>К переводу</span><strong class="fs-5">{{ number_format($payout->amount, 0, ',', ' ') }} ₽</strong></div>
