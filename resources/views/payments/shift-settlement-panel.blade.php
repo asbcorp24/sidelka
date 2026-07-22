@@ -2,7 +2,7 @@
     $viewer = auth()->user();
     $assignmentQuery = $order->caregiverAssignments()
         ->with(['scheduleSlot', 'caregiver', 'payout'])
-        ->whereIn('status', ['accepted', 'completion_requested', 'completed'])
+        ->whereIn('status', ['accepted', 'completed'])
         ->orderBy('order_schedule_slot_id');
 
     if ($viewer->isCaregiver()) {
@@ -35,6 +35,7 @@
                         : now()->subMinute();
                     $shiftEnded = $endsAt->isPast();
                     $payout = $assignment->payout;
+                    $waitingClient = $assignment->status === 'accepted' && $assignment->completion_requested_at;
                 @endphp
                 <div class="col-xl-6">
                     <div class="border rounded-4 p-3 h-100">
@@ -51,7 +52,7 @@
                             </div>
                             @if($assignment->status === 'completed')
                                 <span class="badge text-bg-success">Смена подтверждена</span>
-                            @elseif($assignment->status === 'completion_requested')
+                            @elseif($waitingClient)
                                 <span class="badge text-bg-warning">Ждет клиента</span>
                             @else
                                 <span class="badge text-bg-info">В работе</span>
@@ -72,15 +73,15 @@
                                 </div>
                             </div>
                         @elseif($order->status === 'in_progress' && $shiftEnded)
-                            @if($viewer->isCaregiver() && $assignment->status === 'accepted')
+                            @if($viewer->isCaregiver() && $assignment->status === 'accepted' && ! $waitingClient)
                                 <form action="{{ route('caregiver.assignments.complete-request', [$order, $assignment]) }}" method="POST" class="mt-3">
                                     @csrf
                                     <textarea name="completion_note" class="form-control mb-2" rows="2" placeholder="Кратко укажите, как прошла смена (необязательно)"></textarea>
                                     <button class="btn btn-dark rounded-pill">Смена отработана</button>
                                 </form>
-                            @elseif($viewer->isCaregiver() && $assignment->status === 'completion_requested')
+                            @elseif($viewer->isCaregiver() && $waitingClient)
                                 <div class="alert alert-warning rounded-4 py-2 mt-3 mb-0">Клиенту отправлен запрос на подтверждение и формирование выплаты.</div>
-                            @elseif($viewer->isClient() && in_array($assignment->status, ['accepted', 'completion_requested'], true))
+                            @elseif($viewer->isClient() && $assignment->status === 'accepted')
                                 <form action="{{ route('client.assignments.confirm', [$order, $assignment]) }}" method="POST" class="mt-3">
                                     @csrf
                                     <button class="btn btn-success rounded-pill">Подтвердить смену и сформировать выплату</button>
