@@ -4,15 +4,20 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AgentFinanceController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CaregiverController;
+use App\Http\Controllers\CaregiverDocumentController;
+use App\Http\Controllers\CareOperationsController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ContractController;
 use App\Http\Controllers\CrmController;
 use App\Http\Controllers\EmailVerificationController;
+use App\Http\Controllers\ExecutiveAnalyticsController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LegalContractController;
 use App\Http\Controllers\NewsController;
+use App\Http\Controllers\SafetyIncidentController;
 use App\Http\Controllers\SberPaymentController;
 use App\Http\Controllers\ShiftCompletionController;
+use App\Http\Controllers\ShiftDisputeController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\WalletTopUpController;
 use Illuminate\Support\Facades\Route;
@@ -22,80 +27,48 @@ Route::get('/caregivers', [HomeController::class, 'caregivers'])->name('caregive
 Route::get('/caregivers/{caregiverProfile}', [HomeController::class, 'showCaregiver'])->name('caregivers.show');
 Route::get('/news', [NewsController::class, 'index'])->name('news.index');
 
-Route::post('/payments/sber/callback', [SberPaymentController::class, 'callback'])
-    ->name('payments.sber.callback');
-Route::get('/payments/sber/return/{walletTopUp}', [SberPaymentController::class, 'returnResult'])
-    ->whereUuid('walletTopUp')
-    ->name('payments.sber.return');
-Route::get('/payments/sber/fail/{walletTopUp}', [SberPaymentController::class, 'failResult'])
-    ->whereUuid('walletTopUp')
-    ->name('payments.sber.fail');
+Route::post('/payments/sber/callback', [SberPaymentController::class, 'callback'])->name('payments.sber.callback');
+Route::get('/payments/sber/return/{walletTopUp}', [SberPaymentController::class, 'returnResult'])->whereUuid('walletTopUp')->name('payments.sber.return');
+Route::get('/payments/sber/fail/{walletTopUp}', [SberPaymentController::class, 'failResult'])->whereUuid('walletTopUp')->name('payments.sber.fail');
 
-Route::get('/sign/{legalContractParty}', [LegalContractController::class, 'publicShow'])
-    ->name('legal.public.show');
-Route::post('/sign/{legalContractParty}/code', [LegalContractController::class, 'publicRequestCode'])
-    ->middleware('throttle:3,10')
-    ->name('legal.public.code');
-Route::post('/sign/{legalContractParty}/confirm', [LegalContractController::class, 'publicSign'])
-    ->middleware('throttle:10,10')
-    ->name('legal.public.sign');
-Route::get('/sign/{legalContractParty}/pdf', [LegalContractController::class, 'publicDownload'])
-    ->name('legal.public.pdf');
+Route::get('/sign/{legalContractParty}', [LegalContractController::class, 'publicShow'])->name('legal.public.show');
+Route::post('/sign/{legalContractParty}/code', [LegalContractController::class, 'publicRequestCode'])->middleware('throttle:3,10')->name('legal.public.code');
+Route::post('/sign/{legalContractParty}/confirm', [LegalContractController::class, 'publicSign'])->middleware('throttle:10,10')->name('legal.public.sign');
+Route::get('/sign/{legalContractParty}/pdf', [LegalContractController::class, 'publicDownload'])->name('legal.public.pdf');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login'])->name('login.attempt');
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
-    Route::post('/register', [AuthController::class, 'register'])
-        ->middleware('throttle:10,1')
-        ->name('register.store');
-    Route::get('/register/captcha', [AuthController::class, 'refreshCaptcha'])
-        ->middleware('throttle:20,1')
-        ->name('register.captcha');
-    Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect'])
-        ->whereIn('provider', ['vk', 'yandex'])
-        ->name('social.redirect');
-    Route::get('/auth/{provider}/callback', [SocialAuthController::class, 'callback'])
-        ->whereIn('provider', ['vk', 'yandex'])
-        ->name('social.callback');
+    Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:10,1')->name('register.store');
+    Route::get('/register/captcha', [AuthController::class, 'refreshCaptcha'])->middleware('throttle:20,1')->name('register.captcha');
+    Route::get('/auth/{provider}/redirect', [SocialAuthController::class, 'redirect'])->whereIn('provider', ['vk', 'yandex'])->name('social.redirect');
+    Route::get('/auth/{provider}/callback', [SocialAuthController::class, 'callback'])->whereIn('provider', ['vk', 'yandex'])->name('social.callback');
     Route::get('/auth/social/complete', [SocialAuthController::class, 'showCompleteRegistration'])->name('social.complete');
     Route::post('/auth/social/complete', [SocialAuthController::class, 'completeRegistration'])->name('social.complete.store');
 });
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-
-    Route::get('/email/verify', [EmailVerificationController::class, 'notice'])
-        ->name('verification.notice');
-    Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])
-        ->middleware(['signed', 'throttle:6,1'])
-        ->name('verification.verify');
-    Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])
-        ->middleware('throttle:3,1')
-        ->name('verification.send');
+    Route::get('/email/verify', [EmailVerificationController::class, 'notice'])->name('verification.notice');
+    Route::get('/email/verify/{id}/{hash}', [EmailVerificationController::class, 'verify'])->middleware(['signed', 'throttle:6,1'])->name('verification.verify');
+    Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])->middleware('throttle:3,1')->name('verification.send');
 
     Route::middleware('verified')->group(function () {
-        Route::post('/contracts/framework', [LegalContractController::class, 'createFramework'])
-            ->name('legal.framework.create');
-        Route::post('/contracts/users/{user}/framework', [LegalContractController::class, 'createFrameworkForUser'])
-            ->name('legal.framework.create-for-user');
-        Route::post('/contracts/orders/{order}', [LegalContractController::class, 'createOrder'])
-            ->name('legal.orders.create');
-        Route::get('/contracts/{legalContract}', [LegalContractController::class, 'show'])
-            ->name('legal.contracts.show');
-        Route::post('/contracts/{legalContract}/code', [LegalContractController::class, 'requestCode'])
-            ->middleware('throttle:3,10')
-            ->name('legal.contracts.code');
-        Route::post('/contracts/{legalContract}/sign', [LegalContractController::class, 'sign'])
-            ->middleware('throttle:10,10')
-            ->name('legal.contracts.sign');
-        Route::get('/contracts/{legalContract}/pdf', [LegalContractController::class, 'download'])
-            ->name('legal.contracts.pdf');
-        Route::get('/contracts/{legalContract}/protocol', [LegalContractController::class, 'protocol'])
-            ->name('legal.contracts.protocol');
-        Route::post('/contracts/parties/{legalContractParty}/send-code', [LegalContractController::class, 'staffSendCode'])
-            ->middleware('throttle:5,10')
-            ->name('legal.staff.send-code');
+        Route::post('/contracts/framework', [LegalContractController::class, 'createFramework'])->name('legal.framework.create');
+        Route::post('/contracts/users/{user}/framework', [LegalContractController::class, 'createFrameworkForUser'])->name('legal.framework.create-for-user');
+        Route::post('/contracts/orders/{order}', [LegalContractController::class, 'createOrder'])->name('legal.orders.create');
+        Route::get('/contracts/{legalContract}', [LegalContractController::class, 'show'])->name('legal.contracts.show');
+        Route::post('/contracts/{legalContract}/code', [LegalContractController::class, 'requestCode'])->middleware('throttle:3,10')->name('legal.contracts.code');
+        Route::post('/contracts/{legalContract}/sign', [LegalContractController::class, 'sign'])->middleware('throttle:10,10')->name('legal.contracts.sign');
+        Route::get('/contracts/{legalContract}/pdf', [LegalContractController::class, 'download'])->name('legal.contracts.pdf');
+        Route::get('/contracts/{legalContract}/protocol', [LegalContractController::class, 'protocol'])->name('legal.contracts.protocol');
+        Route::post('/contracts/parties/{legalContractParty}/send-code', [LegalContractController::class, 'staffSendCode'])->middleware('throttle:5,10')->name('legal.staff.send-code');
+
+        Route::post('/orders/{order}/care-plan', [CareOperationsController::class, 'savePlan'])->name('care-plans.save');
+        Route::post('/orders/{order}/incidents', [SafetyIncidentController::class, 'store'])->name('safety-incidents.store');
+        Route::post('/orders/{order}/assignments/{assignment}/disputes', [ShiftDisputeController::class, 'store'])->name('shift-disputes.store');
+        Route::post('/shift-disputes/{shiftDispute}/messages', [ShiftDisputeController::class, 'addMessage'])->name('shift-disputes.messages.store');
     });
 
     Route::middleware(['verified', 'role:caregiver'])->group(function () {
@@ -105,8 +78,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/cabinet/caregiver/profile', [CaregiverController::class, 'updateProfile'])->name('caregiver.profile.update');
         Route::post('/cabinet/caregiver/orders/{order}/accept', [CaregiverController::class, 'acceptOrder'])->name('caregiver.orders.accept');
         Route::post('/cabinet/caregiver/orders/{order}/decline', [CaregiverController::class, 'declineOrder'])->name('caregiver.orders.decline');
-        Route::post('/cabinet/caregiver/orders/{order}/assignments/{assignment}/complete-request', [ShiftCompletionController::class, 'requestCompletion'])
-            ->name('caregiver.assignments.complete-request');
+        Route::post('/cabinet/caregiver/orders/{order}/assignments/{assignment}/journal', [CareOperationsController::class, 'saveJournal'])->name('caregiver.journals.save');
+        Route::post('/cabinet/caregiver/orders/{order}/assignments/{assignment}/journal/entries', [CareOperationsController::class, 'addJournalEntry'])->name('caregiver.journals.entries.store');
+        Route::post('/cabinet/caregiver/orders/{order}/assignments/{assignment}/journal/submit', [CareOperationsController::class, 'submitJournal'])->name('caregiver.journals.submit');
+        Route::post('/cabinet/caregiver/orders/{order}/assignments/{assignment}/complete-request', [ShiftCompletionController::class, 'requestCompletion'])->name('caregiver.assignments.complete-request');
         Route::post('/cabinet/caregiver/orders/{order}/cancel', [CaregiverController::class, 'cancelOrder'])->name('caregiver.orders.cancel');
         Route::post('/cabinet/caregiver/orders/{order}/expenses', [CaregiverController::class, 'storeExpense'])->name('caregiver.orders.expenses.store');
         Route::post('/cabinet/caregiver/orders/{order}/review', [CaregiverController::class, 'storeReview'])->name('caregiver.orders.review.store');
@@ -125,13 +100,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/caregivers/{caregiverProfile}/order', [ClientController::class, 'createOrderForCaregiver'])->name('client.orders.create_for_caregiver');
         Route::post('/cabinet/client/orders', [ClientController::class, 'storeOrder'])->name('client.orders.store');
         Route::post('/cabinet/client/wallet/top-up', [WalletTopUpController::class, 'store'])->name('client.wallet.topup');
-        Route::post('/cabinet/client/orders/{order}/start', [ClientController::class, 'startOrder'])
-            ->middleware('signed.order.contracts')
-            ->name('client.orders.start');
-        Route::post('/cabinet/client/orders/{order}/assignments/{assignment}/confirm', [ShiftCompletionController::class, 'confirmCompletion'])
-            ->name('client.assignments.confirm');
-        Route::post('/cabinet/client/orders/{order}/complete', [ShiftCompletionController::class, 'completeOrder'])
-            ->name('client.orders.complete');
+        Route::post('/cabinet/client/orders/{order}/start', [ClientController::class, 'startOrder'])->middleware('signed.order.contracts')->name('client.orders.start');
+        Route::post('/cabinet/client/orders/{order}/assignments/{assignment}/confirm', [ShiftCompletionController::class, 'confirmCompletion'])->name('client.assignments.confirm');
+        Route::post('/cabinet/client/orders/{order}/complete', [ShiftCompletionController::class, 'completeOrder'])->name('client.orders.complete');
         Route::post('/cabinet/client/orders/{order}/cancel', [ClientController::class, 'cancelOrder'])->name('client.orders.cancel');
         Route::post('/cabinet/client/orders/{order}/expenses/{expense}/approve', [ClientController::class, 'approveExpense'])->name('client.orders.expenses.approve');
         Route::post('/cabinet/client/orders/{order}/expenses/{expense}/reject', [ClientController::class, 'rejectExpense'])->name('client.orders.expenses.reject');
@@ -152,24 +123,56 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('crm')->name('crm.')->middleware(['verified', 'role:admin,crm'])->group(function () {
         Route::get('/', [CrmController::class, 'dashboard'])->name('dashboard');
-        Route::get('/contracts', [LegalContractController::class, 'index'])->name('contracts.index');
-        Route::get('/finance', [AgentFinanceController::class, 'index'])->name('finance.index');
-        Route::patch('/payouts/{payout}/paid', [AgentFinanceController::class, 'markPaid'])->name('payouts.paid');
-        Route::get('/people', [CrmController::class, 'people'])->name('people.index');
-        Route::post('/people', [CrmController::class, 'storeStandalonePerson'])->name('people.store');
-        Route::get('/people/{person}', [CrmController::class, 'showPerson'])->name('people.show');
-        Route::post('/people/{person}/interactions', [CrmController::class, 'storePersonInteraction'])->name('people.interactions.store');
-        Route::post('/people/{person}/tasks', [CrmController::class, 'storePersonTask'])->name('people.tasks.store');
-        Route::post('/requests', [CrmController::class, 'storeRequest'])->name('requests.store');
-        Route::get('/requests/{crmRequest}', [CrmController::class, 'showRequest'])->name('requests.show');
-        Route::patch('/requests/{crmRequest}', [CrmController::class, 'updateRequest'])->name('requests.update');
-        Route::post('/requests/{crmRequest}/interactions', [CrmController::class, 'storeInteraction'])->name('requests.interactions.store');
-        Route::post('/requests/{crmRequest}/tasks', [CrmController::class, 'storeTask'])->name('requests.tasks.store');
-        Route::post('/requests/{crmRequest}/people', [CrmController::class, 'storePerson'])->name('requests.people.store');
-        Route::post('/requests/{crmRequest}/convert', [CrmController::class, 'convertToOrder'])->name('requests.convert');
-        Route::patch('/tasks/{crmTask}/complete', [CrmController::class, 'completeTask'])->name('tasks.complete');
-        Route::post('/caregivers/{caregiver}/availability', [CrmController::class, 'storeAvailability'])->name('caregivers.availability.store');
-        Route::delete('/availability/{availabilitySlot}', [CrmController::class, 'destroyAvailability'])->name('availability.destroy');
+
+        Route::middleware('crm.permission:crm.contracts.manage')->group(function () {
+            Route::get('/contracts', [LegalContractController::class, 'index'])->name('contracts.index');
+        });
+
+        Route::middleware('crm.permission:crm.finance.manage')->group(function () {
+            Route::get('/finance', [AgentFinanceController::class, 'index'])->name('finance.index');
+            Route::patch('/payouts/{payout}/paid', [AgentFinanceController::class, 'markPaid'])->name('payouts.paid');
+        });
+
+        Route::middleware('crm.permission:crm.requests.manage')->group(function () {
+            Route::get('/people', [CrmController::class, 'people'])->name('people.index');
+            Route::post('/people', [CrmController::class, 'storeStandalonePerson'])->name('people.store');
+            Route::get('/people/{person}', [CrmController::class, 'showPerson'])->name('people.show');
+            Route::post('/people/{person}/interactions', [CrmController::class, 'storePersonInteraction'])->name('people.interactions.store');
+            Route::post('/people/{person}/tasks', [CrmController::class, 'storePersonTask'])->name('people.tasks.store');
+            Route::post('/requests', [CrmController::class, 'storeRequest'])->name('requests.store');
+            Route::get('/requests/{crmRequest}', [CrmController::class, 'showRequest'])->name('requests.show');
+            Route::patch('/requests/{crmRequest}', [CrmController::class, 'updateRequest'])->name('requests.update');
+            Route::post('/requests/{crmRequest}/interactions', [CrmController::class, 'storeInteraction'])->name('requests.interactions.store');
+            Route::post('/requests/{crmRequest}/tasks', [CrmController::class, 'storeTask'])->name('requests.tasks.store');
+            Route::post('/requests/{crmRequest}/people', [CrmController::class, 'storePerson'])->name('requests.people.store');
+            Route::post('/requests/{crmRequest}/convert', [CrmController::class, 'convertToOrder'])->name('requests.convert');
+            Route::patch('/tasks/{crmTask}/complete', [CrmController::class, 'completeTask'])->name('tasks.complete');
+        });
+
+        Route::middleware('crm.permission:crm.schedules.manage')->group(function () {
+            Route::post('/caregivers/{caregiver}/availability', [CrmController::class, 'storeAvailability'])->name('caregivers.availability.store');
+            Route::delete('/availability/{availabilitySlot}', [CrmController::class, 'destroyAvailability'])->name('availability.destroy');
+        });
+
+        Route::middleware('crm.permission:crm.documents.manage')->group(function () {
+            Route::get('/caregiver-documents', [CaregiverDocumentController::class, 'index'])->name('caregiver-documents.index');
+            Route::patch('/caregiver-documents/{userDocument}', [CaregiverDocumentController::class, 'update'])->name('caregiver-documents.update');
+        });
+
+        Route::middleware('crm.permission:crm.disputes.manage')->group(function () {
+            Route::get('/shift-disputes', [ShiftDisputeController::class, 'index'])->name('shift-disputes.index');
+            Route::patch('/shift-disputes/{shiftDispute}/resolve', [ShiftDisputeController::class, 'resolve'])->name('shift-disputes.resolve');
+            Route::post('/orders/{order}/assignments/{assignment}/confirm', [ShiftCompletionController::class, 'confirmCompletion'])->name('assignments.confirm');
+        });
+
+        Route::middleware('crm.permission:crm.incidents.manage')->group(function () {
+            Route::get('/incidents', [SafetyIncidentController::class, 'index'])->name('incidents.index');
+            Route::patch('/incidents/{safetyIncident}', [SafetyIncidentController::class, 'update'])->name('incidents.update');
+        });
+
+        Route::get('/analytics', [ExecutiveAnalyticsController::class, 'index'])
+            ->middleware('crm.permission:crm.analytics.view')
+            ->name('analytics.index');
     });
 
     Route::middleware(['verified', 'role:admin'])->group(function () {
