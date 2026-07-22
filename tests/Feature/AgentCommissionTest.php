@@ -16,7 +16,7 @@ class AgentCommissionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_payout_uses_signed_commission_and_requires_crm_confirmation(): void
+    public function test_payout_uses_signed_commission_and_requires_accountant_confirmation(): void
     {
         config(['legal.agent_commission_percent' => 5]);
 
@@ -118,12 +118,14 @@ class AgentCommissionTest extends TestCase
         ]);
 
         $payout = Payout::firstOrFail();
-        $crm = User::factory()->create([
+        $accountant = User::factory()->create([
             'role' => 'crm',
+            'staff_role' => 'accountant',
+            'staff_active' => true,
             'email_verified_at' => now(),
         ]);
 
-        $this->actingAs($crm)
+        $this->actingAs($accountant)
             ->patch(route('crm.payouts.paid', $payout), [
                 'destination' => 'СБП +7 999 000-00-00',
                 'external_reference' => 'BANK-TEST-123',
