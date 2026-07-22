@@ -13,10 +13,12 @@ class CrmWorkflowTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_crm_employee_can_create_phone_request(): void
+    public function test_operator_can_create_phone_request(): void
     {
         $employee = User::factory()->create([
             'role' => 'crm',
+            'staff_role' => 'operator',
+            'staff_active' => true,
             'email_verified_at' => now(),
         ]);
 
@@ -47,10 +49,12 @@ class CrmWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_crm_employee_can_record_caregiver_availability(): void
+    public function test_coordinator_can_record_caregiver_availability(): void
     {
         $employee = User::factory()->create([
             'role' => 'crm',
+            'staff_role' => 'coordinator',
+            'staff_active' => true,
             'email_verified_at' => now(),
         ]);
         $caregiver = User::factory()->create([
@@ -83,10 +87,12 @@ class CrmWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_phone_request_can_be_converted_to_platform_order_once(): void
+    public function test_operator_can_convert_phone_request_to_platform_order_once(): void
     {
         $employee = User::factory()->create([
             'role' => 'crm',
+            'staff_role' => 'operator',
+            'staff_active' => true,
             'email_verified_at' => now(),
         ]);
         $client = User::factory()->create([
@@ -144,5 +150,25 @@ class CrmWorkflowTest extends TestCase
         ]);
         $this->assertDatabaseCount('orders', 1);
         $this->assertInstanceOf(Order::class, $crmRequest->order);
+    }
+
+    public function test_accountant_cannot_access_requests_and_operator_cannot_access_finance(): void
+    {
+        $accountant = User::factory()->create([
+            'role' => 'crm',
+            'staff_role' => 'accountant',
+            'staff_active' => true,
+            'email_verified_at' => now(),
+        ]);
+        $operator = User::factory()->create([
+            'role' => 'crm',
+            'staff_role' => 'operator',
+            'staff_active' => true,
+            'email_verified_at' => now(),
+        ]);
+
+        $this->actingAs($accountant)->get(route('crm.people.index'))->assertForbidden();
+        $this->actingAs($operator)->get(route('crm.finance.index'))->assertForbidden();
+        $this->actingAs($accountant)->get(route('crm.finance.index'))->assertOk();
     }
 }
