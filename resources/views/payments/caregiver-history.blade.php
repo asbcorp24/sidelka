@@ -12,7 +12,24 @@
             <div class="d-flex justify-content-between align-items-start gap-3 py-3 border-bottom">
                 <div>
                     <div><strong>{{ $payout->order->title ?? 'Заказ' }}</strong></div>
-                    <div class="small text-secondary">{{ $payout->created_at->format('d.m.Y H:i') }} • {{ $payout->status }}</div>
+                    @if($payout->assignment?->scheduleSlot)
+                        <div class="small mt-1">
+                            Смена: {{ $payout->assignment->scheduleSlot->scheduled_date->format('d.m.Y') }}
+                            {{ substr($payout->assignment->scheduleSlot->starts_at, 0, 5) }}–{{ substr($payout->assignment->scheduleSlot->ends_at, 0, 5) }}
+                        </div>
+                    @elseif($payout->payment?->kind !== 'base_order')
+                        <div class="small mt-1">Компенсация подтвержденного расхода</div>
+                    @endif
+                    <div class="small text-secondary mt-1">
+                        {{ $payout->created_at->format('d.m.Y H:i') }} •
+                        @if($payout->status === 'paid')
+                            <span class="text-success">переведено</span>
+                        @elseif(in_array($payout->status, ['pending', 'processing'], true))
+                            <span class="text-warning">ожидает банковского перевода</span>
+                        @else
+                            {{ $payout->status }}
+                        @endif
+                    </div>
                     @if($payout->gross_amount !== null)
                         <div class="small mt-2">
                             Начислено: {{ number_format($payout->gross_amount, 0, ',', ' ') }} ₽
@@ -22,6 +39,9 @@
                                 • без комиссии
                             @endif
                         </div>
+                    @endif
+                    @if($payout->status === 'paid' && $payout->external_reference)
+                        <div class="small text-secondary mt-1">Операция: {{ $payout->external_reference }}</div>
                     @endif
                 </div>
                 <div class="text-end">
