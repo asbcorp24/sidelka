@@ -8,6 +8,7 @@ use App\Http\Controllers\ContractController;
 use App\Http\Controllers\CrmController;
 use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\LegalContractController;
 use App\Http\Controllers\NewsController;
 use App\Http\Controllers\SberPaymentController;
 use App\Http\Controllers\SocialAuthController;
@@ -27,6 +28,17 @@ Route::get('/payments/sber/return/{walletTopUp}', [SberPaymentController::class,
 Route::get('/payments/sber/fail/{walletTopUp}', [SberPaymentController::class, 'failResult'])
     ->whereUuid('walletTopUp')
     ->name('payments.sber.fail');
+
+Route::get('/sign/{legalContractParty}', [LegalContractController::class, 'publicShow'])
+    ->name('legal.public.show');
+Route::post('/sign/{legalContractParty}/code', [LegalContractController::class, 'publicRequestCode'])
+    ->middleware('throttle:3,10')
+    ->name('legal.public.code');
+Route::post('/sign/{legalContractParty}/confirm', [LegalContractController::class, 'publicSign'])
+    ->middleware('throttle:10,10')
+    ->name('legal.public.sign');
+Route::get('/sign/{legalContractParty}/pdf', [LegalContractController::class, 'publicDownload'])
+    ->name('legal.public.pdf');
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -59,6 +71,30 @@ Route::middleware('auth')->group(function () {
     Route::post('/email/verification-notification', [EmailVerificationController::class, 'send'])
         ->middleware('throttle:3,1')
         ->name('verification.send');
+
+    Route::middleware('verified')->group(function () {
+        Route::post('/contracts/framework', [LegalContractController::class, 'createFramework'])
+            ->name('legal.framework.create');
+        Route::post('/contracts/users/{user}/framework', [LegalContractController::class, 'createFrameworkForUser'])
+            ->name('legal.framework.create-for-user');
+        Route::post('/contracts/orders/{order}', [LegalContractController::class, 'createOrder'])
+            ->name('legal.orders.create');
+        Route::get('/contracts/{legalContract}', [LegalContractController::class, 'show'])
+            ->name('legal.contracts.show');
+        Route::post('/contracts/{legalContract}/code', [LegalContractController::class, 'requestCode'])
+            ->middleware('throttle:3,10')
+            ->name('legal.contracts.code');
+        Route::post('/contracts/{legalContract}/sign', [LegalContractController::class, 'sign'])
+            ->middleware('throttle:10,10')
+            ->name('legal.contracts.sign');
+        Route::get('/contracts/{legalContract}/pdf', [LegalContractController::class, 'download'])
+            ->name('legal.contracts.pdf');
+        Route::get('/contracts/{legalContract}/protocol', [LegalContractController::class, 'protocol'])
+            ->name('legal.contracts.protocol');
+        Route::post('/contracts/parties/{legalContractParty}/send-code', [LegalContractController::class, 'staffSendCode'])
+            ->middleware('throttle:5,10')
+            ->name('legal.staff.send-code');
+    });
 
     Route::middleware(['verified', 'role:caregiver'])->group(function () {
         Route::get('/cabinet/caregiver', [CaregiverController::class, 'myDashboard'])->name('caregiver.dashboard');
