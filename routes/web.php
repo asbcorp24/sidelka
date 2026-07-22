@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CaregiverController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ContractController;
+use App\Http\Controllers\CrmController;
 use App\Http\Controllers\EmailVerificationController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\NewsController;
@@ -104,10 +105,30 @@ Route::middleware('auth')->group(function () {
         Route::post('/cabinet/legal/document', [ContractController::class, 'storeDocument'])->name('contracts.document.store');
     });
 
+    Route::prefix('crm')->name('crm.')->middleware(['verified', 'role:admin,crm'])->group(function () {
+        Route::get('/', [CrmController::class, 'dashboard'])->name('dashboard');
+        Route::get('/people', [CrmController::class, 'people'])->name('people.index');
+        Route::post('/people', [CrmController::class, 'storeStandalonePerson'])->name('people.store');
+        Route::get('/people/{person}', [CrmController::class, 'showPerson'])->name('people.show');
+        Route::post('/people/{person}/interactions', [CrmController::class, 'storePersonInteraction'])->name('people.interactions.store');
+        Route::post('/people/{person}/tasks', [CrmController::class, 'storePersonTask'])->name('people.tasks.store');
+        Route::post('/requests', [CrmController::class, 'storeRequest'])->name('requests.store');
+        Route::get('/requests/{crmRequest}', [CrmController::class, 'showRequest'])->name('requests.show');
+        Route::patch('/requests/{crmRequest}', [CrmController::class, 'updateRequest'])->name('requests.update');
+        Route::post('/requests/{crmRequest}/interactions', [CrmController::class, 'storeInteraction'])->name('requests.interactions.store');
+        Route::post('/requests/{crmRequest}/tasks', [CrmController::class, 'storeTask'])->name('requests.tasks.store');
+        Route::post('/requests/{crmRequest}/people', [CrmController::class, 'storePerson'])->name('requests.people.store');
+        Route::post('/requests/{crmRequest}/convert', [CrmController::class, 'convertToOrder'])->name('requests.convert');
+        Route::patch('/tasks/{crmTask}/complete', [CrmController::class, 'completeTask'])->name('tasks.complete');
+        Route::post('/caregivers/{caregiver}/availability', [CrmController::class, 'storeAvailability'])->name('caregivers.availability.store');
+        Route::delete('/availability/{availabilitySlot}', [CrmController::class, 'destroyAvailability'])->name('availability.destroy');
+    });
+
     Route::middleware(['verified', 'role:admin'])->group(function () {
         Route::get('/admin', [AdminController::class, 'dashboard'])->name('admin.dashboard');
         Route::post('/admin/services', [AdminController::class, 'storeService'])->name('admin.services.store');
         Route::post('/admin/news', [AdminController::class, 'storeNews'])->name('admin.news.store');
+        Route::post('/admin/crm-employees', [AdminController::class, 'storeCrmEmployee'])->name('admin.crm-employees.store');
         Route::post('/admin/users/{user}', [AdminController::class, 'updateUser'])->name('admin.users.update');
         Route::get('/dashboard/caregiver/{user}', [CaregiverController::class, 'dashboard'])->name('dashboard.caregiver');
         Route::get('/dashboard/client/{user}', [ClientController::class, 'dashboard'])->name('dashboard.client');
