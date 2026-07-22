@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use App\Models\LegalContract;
 use App\Models\Order;
 use App\Models\OrderCaregiverAssignment;
+use App\Models\ShiftAct;
 use App\Models\User;
 use App\Services\OrderFinanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,7 +15,7 @@ class AutoShiftSettlementTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_overdue_completion_request_is_settled_automatically(): void
+    public function test_overdue_act_without_dispute_is_settled_automatically(): void
     {
         config([
             'legal.agent_commission_percent' => 10,
@@ -64,21 +64,21 @@ class AutoShiftSettlementTest extends TestCase
             'completion_note' => 'Смена выполнена.',
         ]);
 
-        LegalContract::create([
+        ShiftAct::create([
             'public_id' => (string) Str::uuid(),
-            'type' => LegalContract::TYPE_ORDER_SERVICE,
             'order_id' => $order->id,
-            'number' => 'ORD-AUTO-1',
-            'version' => 1,
-            'title' => 'Подписанный договор смены',
-            'status' => LegalContract::STATUS_SIGNED,
-            'body_html' => '<p>Договор</p>',
-            'document_hash' => hash('sha256', '<p>Договор</p>'),
-            'meta' => [
-                'caregiver_id' => $caregiver->id,
-                'commission_percent' => 10,
-            ],
-            'signed_at' => now(),
+            'order_caregiver_assignment_id' => $assignment->id,
+            'client_id' => $client->id,
+            'caregiver_id' => $caregiver->id,
+            'number' => 'ACT-AUTO-1',
+            'status' => ShiftAct::STATUS_AWAITING_CLIENT,
+            'body_html' => '<p>Акт смены</p>',
+            'document_hash' => hash('sha256', '<p>Акт смены</p>'),
+            'gross_amount' => 1200,
+            'commission_amount' => 120,
+            'payout_amount' => 1080,
+            'caregiver_confirmed_at' => now()->subHours(25),
+            'meta' => ['commission_percent' => 10],
         ]);
 
         app(OrderFinanceService::class)
@@ -91,6 +91,12 @@ class AutoShiftSettlementTest extends TestCase
 
         $this->assertSame('completed', $assignment->fresh()->status);
         $this->assertNotNull($assignment->fresh()->payout_generated_at);
+        $this->assertDatabaseHas('shift_acts', [
+            'order_caregiver_assignment_id' => $assignment->id,
+            'status' => ShiftAct::STATUS_RESOLVED,
+            'client_confirmed_at' => null,
+            'signed_at' => null,
+        ]);
         $this->assertDatabaseHas('payouts', [
             'order_caregiver_assignment_id' => $assignment->id,
             'caregiver_id' => $caregiver->id,
