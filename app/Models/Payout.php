@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Payout extends Model
 {
@@ -14,6 +15,9 @@ class Payout extends Model
         'order_id',
         'payment_id',
         'caregiver_id',
+        'gross_amount',
+        'commission_percent',
+        'commission_amount',
         'amount',
         'currency',
         'status',
@@ -22,6 +26,7 @@ class Payout extends Model
     ];
 
     protected $casts = [
+        'commission_percent' => 'decimal:2',
         'paid_at' => 'datetime',
     ];
 
@@ -38,5 +43,10 @@ class Payout extends Model
     public function caregiver(): BelongsTo
     {
         return $this->belongsTo(User::class, 'caregiver_id');
+    }
+
+    public function agentCommission(): HasOne
+    {
+        return $this->hasOne(AgentCommission::class);
     }
 }
