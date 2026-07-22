@@ -145,6 +145,21 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(WalletTopUp::class);
     }
 
+    public function crmRequestsResponsible(): HasMany
+    {
+        return $this->hasMany(CrmRequest::class, 'responsible_user_id');
+    }
+
+    public function crmInteractions(): HasMany
+    {
+        return $this->hasMany(CrmInteraction::class, 'person_user_id');
+    }
+
+    public function crmTasks(): HasMany
+    {
+        return $this->hasMany(CrmTask::class, 'person_user_id');
+    }
+
     public function isCaregiver(): bool
     {
         return $this->role === 'caregiver';
@@ -158,5 +173,10 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isAdmin(): bool
     {
         return $this->role === 'admin';
+    }
+
+    public function isCrm(): bool
+    {
+        return $this->role === 'crm';
     }
 }
