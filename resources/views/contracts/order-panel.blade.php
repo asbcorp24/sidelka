@@ -2,6 +2,12 @@
     $contractQuery = \App\Models\LegalContract::query()
         ->where('order_id', $order->id)
         ->where('type', \App\Models\LegalContract::TYPE_ORDER_SERVICE)
+        ->whereIn('status', [\App\Models\LegalContract::STATUS_AWAITING, \App\Models\LegalContract::STATUS_SIGNED])
+        ->where(function ($query) {
+            $query->where('status', \App\Models\LegalContract::STATUS_SIGNED)
+                ->orWhereNull('expires_at')
+                ->orWhere('expires_at', '>', now());
+        })
         ->with('parties.signature')
         ->latest('id');
 
