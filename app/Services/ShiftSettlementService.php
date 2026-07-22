@@ -28,8 +28,14 @@ class ShiftSettlementService
             }
 
             $act = $locked->act;
-            if (! $act || $act->status !== ShiftAct::STATUS_SIGNED) {
-                throw ValidationException::withMessages(['act' => 'Для выплаты нужен подписанный акт этой смены.']);
+            $zeroResolution = $approvedGrossAmount === 0;
+            $actIsUsable = $act && (
+                $act->status === ShiftAct::STATUS_SIGNED
+                || ($zeroResolution && in_array($act->status, [ShiftAct::STATUS_DISPUTED, ShiftAct::STATUS_CANCELLED], true))
+            );
+
+            if (! $actIsUsable) {
+                throw ValidationException::withMessages(['act' => 'Для выплаты нужен подписанный акт либо решение об отказе в оплате.']);
             }
 
             if ($locked->disputes()->whereIn('status', ['open', 'in_review'])->exists()) {
@@ -52,11 +58,7 @@ class ShiftSettlementService
                 ->where('status', '!=', 'cancelled')
                 ->sum('gross_amount');
             $remaining = max(0, (int) $payment->amount - $alreadyReleased);
-            $gross = min($approvedGrossAmount ?? (int) $act->gross_amount, $remaining);
-
-            if ($gross < 0) {
-                $gross = 0;
-            }
+            $gross = min(max(0, $approvedGrossAmount ?? (int) $act->gross_amount), $remaining);
 
             $percent = (float) (($act->meta ?? [])['commission_percent'] ?? 0);
             $commission = (int) round($gross * $percent / 100);
