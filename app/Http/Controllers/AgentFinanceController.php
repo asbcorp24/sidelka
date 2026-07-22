@@ -8,7 +8,6 @@ use App\Services\OrderFinanceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class AgentFinanceController extends Controller
@@ -68,11 +67,11 @@ class AgentFinanceController extends Controller
             'external_reference' => ['required', 'string', 'max:255'],
         ]);
 
-        $paidPayout = DB::transaction(function () use ($payout, $data) {
+        [$paidPayout, $changed] = DB::transaction(function () use ($payout, $data) {
             $locked = Payout::query()->whereKey($payout->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status === 'paid') {
-                return $locked;
+                return [$locked->fresh(['caregiver', 'order']), false];
             }
 
             abort_unless(in_array($locked->status, ['pending', 'processing'], true), 422);
@@ -84,18 +83,27 @@ class AgentFinanceController extends Controller
                 'paid_at' => now(),
             ]);
 
-            return $locked->fresh(['caregiver', 'order']);
+            $locked->load('order');
+            if ($locked->order && ! $locked->order->payouts()->whereIn('status', ['pending', 'processing'])->exists()) {
+                $locked->order->update(['payment_status' => 'released']);
+            }
+
+            return [$locked->fresh(['caregiver', 'order']), true];
         });
 
-        $this->financeService->notify(
-            $paidPayout->caregiver,
-            'payout.released',
-            'Выплата переведена',
-            'По заказу «' . ($paidPayout->order?->title ?: '#' . $paidPayout->order_id) . '» переведено '
-                . number_format($paidPayout->amount, 0, ',', ' ') . ' ₽. Номер операции: '
-                . $paidPayout->external_reference . '.'
-        );
+        if ($changed) {
+            $this->financeService->notify(
+                $paidPayout->caregiver,
+                'payout.released',
+                'Выплата переведена',
+                'По заказу «' . ($paidPayout->order?->title ?: '#' . $paidPayout->order_id) . '» переведено '
+                    . number_format($paidPayout->amount, 0, ',', ' ') . ' ₽. Номер операции: '
+                    . $paidPayout->external_reference . '.'
+            );
+        }
 
-        return back()->with('status', 'Выплата отмечена как выполненная.');
+        return back()->with('status', $changed
+            ? 'Выплата отмечена как выполненная.'
+            : 'Эта выплата уже была подтверждена ранее.');
     }
 }
