@@ -160,6 +160,10 @@ class AuthController extends Controller
             return 'admin.dashboard';
         }
 
+        if ($user->isCrm()) {
+            return 'crm.dashboard';
+        }
+
         if ($user->isCaregiver()) {
             return 'caregiver.dashboard';
         }
