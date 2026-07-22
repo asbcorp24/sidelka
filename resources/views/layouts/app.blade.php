@@ -124,6 +124,13 @@
                 </div>
             @endif
         </div>
+
+        @auth
+            @if(isset($order) && $order instanceof \App\Models\Order)
+                @include('contracts.order-panel')
+            @endif
+        @endauth
+
         @yield('content')
     </main>
 
