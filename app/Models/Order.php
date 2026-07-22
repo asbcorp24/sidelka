@@ -24,9 +24,11 @@ class Order extends Model
 
     public const PAYMENT_STATUS_LABELS = [
         'pending' => 'Ожидает оплаты',
-        'held' => 'Средства удержаны',
-        'payout_pending' => 'Выплата сиделке сформирована',
-        'released' => 'Выплачено сиделке',
+        'held' => 'Средства будущих смен удержаны',
+        'partially_released' => 'Часть смен рассчитана',
+        'payout_pending' => 'Есть выплаты, ожидающие перевода',
+        'released' => 'Все выплаты выполнены',
+        'partially_refunded' => 'Часть выплачена, остаток возвращен',
         'refunded' => 'Возвращено клиенту',
         'cancelled' => 'Оплата отменена',
     ];
@@ -43,8 +45,10 @@ class Order extends Model
     public const PAYMENT_STATUS_BADGE_CLASSES = [
         'pending' => 'text-bg-secondary',
         'held' => 'text-bg-warning',
+        'partially_released' => 'text-bg-info',
         'payout_pending' => 'text-bg-warning',
         'released' => 'text-bg-success',
+        'partially_refunded' => 'text-bg-info',
         'refunded' => 'text-bg-info',
         'cancelled' => 'text-bg-dark',
     ];
