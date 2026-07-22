@@ -9,14 +9,24 @@
     <div class="card-soft p-4 mb-4">
         <h2 class="h4 mb-3">Выплаты</h2>
         @forelse($payouts as $payout)
-            <div class="d-flex justify-content-between py-2 border-bottom">
+            <div class="d-flex justify-content-between align-items-start gap-3 py-3 border-bottom">
                 <div>
-                    <div>{{ $payout->order->title ?? 'Заказ' }}</div>
-                    <div class="small text-secondary">{{ $payout->created_at->format('d.m.Y H:i') }}</div>
+                    <div><strong>{{ $payout->order->title ?? 'Заказ' }}</strong></div>
+                    <div class="small text-secondary">{{ $payout->created_at->format('d.m.Y H:i') }} • {{ $payout->status }}</div>
+                    @if($payout->gross_amount !== null)
+                        <div class="small mt-2">
+                            Начислено: {{ number_format($payout->gross_amount, 0, ',', ' ') }} ₽
+                            @if($payout->commission_amount > 0)
+                                • комиссия площадки {{ number_format($payout->commission_percent, 2, ',', ' ') }}%: {{ number_format($payout->commission_amount, 0, ',', ' ') }} ₽
+                            @else
+                                • без комиссии
+                            @endif
+                        </div>
+                    @endif
                 </div>
                 <div class="text-end">
-                    <div><strong>{{ number_format($payout->amount, 0, ',', ' ') }} ₽</strong></div>
-                    <div class="small text-secondary">{{ $payout->status }}</div>
+                    <div class="small text-secondary">К выплате</div>
+                    <div><strong class="fs-5">{{ number_format($payout->amount, 0, ',', ' ') }} ₽</strong></div>
                 </div>
             </div>
         @empty
