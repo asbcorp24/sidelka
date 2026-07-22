@@ -145,6 +145,7 @@ Route::middleware('auth')->group(function () {
 
     Route::prefix('crm')->name('crm.')->middleware(['verified', 'role:admin,crm'])->group(function () {
         Route::get('/', [CrmController::class, 'dashboard'])->name('dashboard');
+        Route::get('/contracts', [LegalContractController::class, 'index'])->name('contracts.index');
         Route::get('/people', [CrmController::class, 'people'])->name('people.index');
         Route::post('/people', [CrmController::class, 'storeStandalonePerson'])->name('people.store');
         Route::get('/people/{person}', [CrmController::class, 'showPerson'])->name('people.show');
