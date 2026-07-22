@@ -172,7 +172,7 @@ class ShiftCompletionController extends Controller
             );
 
             $order->update(['status' => 'completed']);
-            $this->financeService->syncOrderPaymentStatus($order->fresh());
+            $this->balanceClosure->syncFinalPaymentStatus($order->fresh());
 
             foreach ($order->conversations->where('status', 'active') as $conversation) {
                 $conversation->messages()->create([
