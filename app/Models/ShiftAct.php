@@ -13,6 +13,7 @@ class ShiftAct extends Model
 
     public const STATUS_AWAITING_CLIENT = 'awaiting_client';
     public const STATUS_SIGNED = 'signed';
+    public const STATUS_RESOLVED = 'resolved';
     public const STATUS_DISPUTED = 'disputed';
     public const STATUS_CANCELLED = 'cancelled';
 
