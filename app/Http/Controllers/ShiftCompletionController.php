@@ -82,10 +82,13 @@ class ShiftCompletionController extends Controller
     public function confirmCompletion(Request $request, Order $order, OrderCaregiverAssignment $assignment): RedirectResponse
     {
         $user = $request->user();
-        $canConfirm = ($user->isClient() && $order->client_id === $user->id)
-            || $user->hasStaffPermission('crm.disputes.manage');
 
-        abort_unless($canConfirm && $assignment->order_id === $order->id, 404);
+        abort_unless(
+            $user->isClient()
+            && $order->client_id === $user->id
+            && $assignment->order_id === $order->id,
+            404
+        );
         abort_unless($order->status === 'in_progress', 422);
 
         if ($assignment->status === 'completed') {
@@ -101,7 +104,7 @@ class ShiftCompletionController extends Controller
         }
 
         $act = $assignment->act()->firstOrFail();
-        $this->acts->signByClient($act, $order->client, $request);
+        $this->acts->signByClient($act, $user, $request);
         $payout = $this->settlements->settle($assignment->fresh());
 
         ShiftJournal::where('order_caregiver_assignment_id', $assignment->id)->update([
@@ -114,13 +117,13 @@ class ShiftCompletionController extends Controller
         if ($conversation) {
             $conversation->messages()->create([
                 'sender_id' => $user->id,
-                'body' => 'Акт смены подтверждён. Выплата '
+                'body' => 'Акт смены подтверждён заказчиком. Выплата '
                     . number_format($payout->amount, 0, ',', ' ')
                     . ' ₽ сформирована и передана на обработку.',
             ]);
         }
 
-        return back()->with('status', 'Акт подписан. Выплата сиделке сформирована отдельно от остальных смен.');
+        return back()->with('status', 'Акт подписан заказчиком. Выплата сиделке сформирована отдельно от остальных смен.');
     }
 
     public function completeOrder(Request $request, Order $order): RedirectResponse
