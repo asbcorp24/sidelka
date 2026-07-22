@@ -145,6 +145,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(WalletTopUp::class);
     }
 
+    public function legalContractParties(): HasMany
+    {
+        return $this->hasMany(LegalContractParty::class);
+    }
+
     public function crmRequestsResponsible(): HasMany
     {
         return $this->hasMany(CrmRequest::class, 'responsible_user_id');
