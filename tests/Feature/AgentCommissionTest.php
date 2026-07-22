@@ -33,8 +33,8 @@ class AgentCommissionTest extends TestCase
             'city' => 'Казань',
         ]);
 
-        $start = now()->addDay()->setTime(9, 0);
-        $end = now()->addDay()->setTime(13, 0);
+        $start = now()->subHours(5);
+        $end = now()->subHour();
 
         $order = Order::create([
             'client_id' => $client->id,
@@ -53,16 +53,19 @@ class AgentCommissionTest extends TestCase
         ]);
 
         $slot = $order->scheduleSlots()->create([
-            'scheduled_date' => $start->toDateString(),
+            'scheduled_date' => now()->subDay()->toDateString(),
             'starts_at' => '09:00:00',
             'ends_at' => '13:00:00',
         ]);
 
-        OrderCaregiverAssignment::create([
+        $assignment = OrderCaregiverAssignment::create([
             'order_id' => $order->id,
             'order_schedule_slot_id' => $slot->id,
             'caregiver_id' => $caregiver->id,
-            'status' => 'accepted',
+            'status' => 'completed',
+            'confirmed_at' => now()->subDays(2),
+            'client_confirmed_at' => now(),
+            'completed_at' => now(),
         ]);
 
         LegalContract::create([
@@ -89,10 +92,12 @@ class AgentCommissionTest extends TestCase
             'caregiver',
             'caregiverAssignments.caregiver',
             'caregiverAssignments.scheduleSlot',
+            'scheduleSlots',
         ]));
 
         $this->assertDatabaseHas('payouts', [
             'order_id' => $order->id,
+            'order_caregiver_assignment_id' => $assignment->id,
             'caregiver_id' => $caregiver->id,
             'gross_amount' => 2400,
             'commission_amount' => 300,
@@ -105,6 +110,7 @@ class AgentCommissionTest extends TestCase
 
         $this->assertDatabaseHas('agent_commissions', [
             'order_id' => $order->id,
+            'order_caregiver_assignment_id' => $assignment->id,
             'caregiver_id' => $caregiver->id,
             'gross_amount' => 2400,
             'amount' => 300,
