@@ -22,6 +22,7 @@ class Payout extends Model
         'currency',
         'status',
         'destination',
+        'external_reference',
         'paid_at',
     ];
 
