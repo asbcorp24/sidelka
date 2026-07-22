@@ -32,7 +32,7 @@ return new class extends Migration
 
         Schema::create('legal_contract_parties', function (Blueprint $table) {
             $table->id();
-            $table->uuid('public_token')->unique();
+            $table->char('public_token', 64)->unique();
             $table->foreignId('legal_contract_id')->constrained()->cascadeOnDelete();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
             $table->string('role', 32)->index();
