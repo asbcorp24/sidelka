@@ -12,6 +12,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\LegalContractController;
 use App\Http\Controllers\NewsController;
 use App\Http\Controllers\SberPaymentController;
+use App\Http\Controllers\ShiftCompletionController;
 use App\Http\Controllers\SocialAuthController;
 use App\Http\Controllers\WalletTopUpController;
 use Illuminate\Support\Facades\Route;
@@ -104,6 +105,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/cabinet/caregiver/profile', [CaregiverController::class, 'updateProfile'])->name('caregiver.profile.update');
         Route::post('/cabinet/caregiver/orders/{order}/accept', [CaregiverController::class, 'acceptOrder'])->name('caregiver.orders.accept');
         Route::post('/cabinet/caregiver/orders/{order}/decline', [CaregiverController::class, 'declineOrder'])->name('caregiver.orders.decline');
+        Route::post('/cabinet/caregiver/orders/{order}/assignments/{assignment}/complete-request', [ShiftCompletionController::class, 'requestCompletion'])
+            ->name('caregiver.assignments.complete-request');
         Route::post('/cabinet/caregiver/orders/{order}/cancel', [CaregiverController::class, 'cancelOrder'])->name('caregiver.orders.cancel');
         Route::post('/cabinet/caregiver/orders/{order}/expenses', [CaregiverController::class, 'storeExpense'])->name('caregiver.orders.expenses.store');
         Route::post('/cabinet/caregiver/orders/{order}/review', [CaregiverController::class, 'storeReview'])->name('caregiver.orders.review.store');
@@ -125,7 +128,10 @@ Route::middleware('auth')->group(function () {
         Route::post('/cabinet/client/orders/{order}/start', [ClientController::class, 'startOrder'])
             ->middleware('signed.order.contracts')
             ->name('client.orders.start');
-        Route::post('/cabinet/client/orders/{order}/complete', [ClientController::class, 'completeOrder'])->name('client.orders.complete');
+        Route::post('/cabinet/client/orders/{order}/assignments/{assignment}/confirm', [ShiftCompletionController::class, 'confirmCompletion'])
+            ->name('client.assignments.confirm');
+        Route::post('/cabinet/client/orders/{order}/complete', [ShiftCompletionController::class, 'completeOrder'])
+            ->name('client.orders.complete');
         Route::post('/cabinet/client/orders/{order}/cancel', [ClientController::class, 'cancelOrder'])->name('client.orders.cancel');
         Route::post('/cabinet/client/orders/{order}/expenses/{expense}/approve', [ClientController::class, 'approveExpense'])->name('client.orders.expenses.approve');
         Route::post('/cabinet/client/orders/{order}/expenses/{expense}/reject', [ClientController::class, 'rejectExpense'])->name('client.orders.expenses.reject');
