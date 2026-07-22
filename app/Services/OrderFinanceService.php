@@ -113,21 +113,6 @@ class OrderFinanceService
                 applyCommission: $payment->kind === 'base_order',
             );
         }
-
-        $paidPayouts = $order->payouts()->where('status', 'paid')->get()->groupBy('caregiver_id');
-
-        foreach ($paidPayouts as $caregiverId => $payouts) {
-            $caregiver = User::find($caregiverId);
-            $net = (int) $payouts->sum('amount');
-            $commission = (int) $payouts->sum('commission_amount');
-
-            $this->notify(
-                $caregiver,
-                'payout.released',
-                'Выплата переведена',
-                "По заказу «{$order->title}» выплачено {$net} ₽. Агентское вознаграждение площадки: {$commission} ₽."
-            );
-        }
     }
 
     public function cancelOrder(Order $order, User $actor, string $reason, ?string $details = null): void
@@ -315,9 +300,9 @@ class OrderFinanceService
                 'commission_amount' => $commissionAmount,
                 'amount' => $netAmount,
                 'currency' => $payment->currency,
-                'status' => 'paid',
+                'status' => 'pending',
                 'destination' => 'Банковские реквизиты сиделки',
-                'paid_at' => now(),
+                'paid_at' => null,
             ]
         );
 
@@ -340,6 +325,15 @@ class OrderFinanceService
             );
         }
 
+        if ($payout->wasRecentlyCreated) {
+            $this->notify(
+                User::find($caregiverId),
+                'payout.pending',
+                'Выплата сформирована',
+                "По заказу «{$order->title}» сформирована выплата {$netAmount} ₽. Комиссия площадки: {$commissionAmount} ₽. Перевод ожидает обработки."
+            );
+        }
+
         return $payout;
     }
 
@@ -353,7 +347,8 @@ class OrderFinanceService
             ->latest('id')
             ->first();
 
-        $percent = $signedContract?->meta['commission_percent']
+        $contractMeta = $signedContract?->meta ?? [];
+        $percent = $contractMeta['commission_percent']
             ?? config('legal.agent_commission_percent', 0);
 
         return max(0, min(100, (float) $percent));
