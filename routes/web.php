@@ -121,7 +121,9 @@ Route::middleware('auth')->group(function () {
         Route::get('/caregivers/{caregiverProfile}/order', [ClientController::class, 'createOrderForCaregiver'])->name('client.orders.create_for_caregiver');
         Route::post('/cabinet/client/orders', [ClientController::class, 'storeOrder'])->name('client.orders.store');
         Route::post('/cabinet/client/wallet/top-up', [WalletTopUpController::class, 'store'])->name('client.wallet.topup');
-        Route::post('/cabinet/client/orders/{order}/start', [ClientController::class, 'startOrder'])->name('client.orders.start');
+        Route::post('/cabinet/client/orders/{order}/start', [ClientController::class, 'startOrder'])
+            ->middleware('signed.order.contracts')
+            ->name('client.orders.start');
         Route::post('/cabinet/client/orders/{order}/complete', [ClientController::class, 'completeOrder'])->name('client.orders.complete');
         Route::post('/cabinet/client/orders/{order}/cancel', [ClientController::class, 'cancelOrder'])->name('client.orders.cancel');
         Route::post('/cabinet/client/orders/{order}/expenses/{expense}/approve', [ClientController::class, 'approveExpense'])->name('client.orders.expenses.approve');
