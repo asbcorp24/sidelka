@@ -36,8 +36,8 @@ class CareOperationsController extends Controller
             'emergency_contact_phone' => ['nullable', 'string', 'max:64'],
             'notes' => ['nullable', 'string', 'max:5000'],
             'items' => ['array'],
-            'items.*.category' => ['required', Rule::in(['nutrition', 'medication', 'hygiene', 'mobility', 'observation', 'household', 'other'])],
-            'items.*.title' => ['required', 'string', 'max:255'],
+            'items.*.category' => ['nullable', Rule::in(['nutrition', 'medication', 'hygiene', 'mobility', 'observation', 'household', 'other'])],
+            'items.*.title' => ['nullable', 'string', 'max:255'],
             'items.*.instructions' => ['nullable', 'string', 'max:3000'],
             'items.*.schedule_text' => ['nullable', 'string', 'max:255'],
             'items.*.is_required' => ['nullable', 'boolean'],
@@ -64,14 +64,20 @@ class CareOperationsController extends Controller
             ]);
 
             $plan->items()->delete();
-            foreach (array_values($data['items'] ?? []) as $index => $item) {
+            $sortOrder = 0;
+            foreach (array_values($data['items'] ?? []) as $item) {
+                $title = trim((string) ($item['title'] ?? ''));
+                if ($title === '') {
+                    continue;
+                }
+
                 $plan->items()->create([
-                    'category' => $item['category'],
-                    'title' => $item['title'],
+                    'category' => $item['category'] ?? 'other',
+                    'title' => $title,
                     'instructions' => $item['instructions'] ?? null,
                     'schedule_text' => $item['schedule_text'] ?? null,
                     'is_required' => (bool) ($item['is_required'] ?? false),
-                    'sort_order' => $index,
+                    'sort_order' => $sortOrder++,
                 ]);
             }
         });
@@ -149,7 +155,10 @@ class CareOperationsController extends Controller
         ]);
 
         abort_if($journal->status === 'accepted', 422);
-        $journal->entries()->create([...$data, 'created_by_id' => $user->id, 'is_alert' => (bool) ($data['is_alert'] ?? false)]);
+        $journal->entries()->create(array_merge($data, [
+            'created_by_id' => $user->id,
+            'is_alert' => (bool) ($data['is_alert'] ?? false),
+        ]));
 
         return back()->with('status', 'Событие добавлено в журнал смены.');
     }
