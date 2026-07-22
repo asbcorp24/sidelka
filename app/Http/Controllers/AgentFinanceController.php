@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\AgentCommission;
 use App\Models\Payout;
+use App\Services\OrderBalanceClosureService;
 use App\Services\OrderFinanceService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,13 +13,15 @@ use Illuminate\View\View;
 
 class AgentFinanceController extends Controller
 {
-    public function __construct(private OrderFinanceService $financeService)
-    {
+    public function __construct(
+        private OrderFinanceService $financeService,
+        private OrderBalanceClosureService $balanceClosure,
+    ) {
     }
 
     public function index(Request $request): View
     {
-        abort_unless($request->user()->isAdmin() || $request->user()->isCrm(), 403);
+        abort_unless($request->user()->hasStaffPermission('crm.finance.manage'), 403);
 
         $query = Payout::query()
             ->with(['order', 'payment', 'assignment.scheduleSlot', 'caregiver.contractProfile'])
@@ -60,7 +63,7 @@ class AgentFinanceController extends Controller
 
     public function markPaid(Request $request, Payout $payout): RedirectResponse
     {
-        abort_unless($request->user()->isAdmin() || $request->user()->isCrm(), 403);
+        abort_unless($request->user()->hasStaffPermission('crm.finance.manage'), 403);
 
         $data = $request->validate([
             'destination' => ['required', 'string', 'max:500'],
@@ -87,7 +90,7 @@ class AgentFinanceController extends Controller
         });
 
         if ($paidPayout->order) {
-            $this->financeService->syncOrderPaymentStatus($paidPayout->order);
+            $this->balanceClosure->syncFinalPaymentStatus($paidPayout->order);
         }
 
         if ($changed) {
