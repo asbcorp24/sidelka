@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\AgentCommission;
+use App\Models\LegalContract;
 use App\Models\MarketplaceNotification;
 use App\Models\Order;
 use App\Models\OrderExpense;
@@ -295,7 +296,7 @@ class OrderFinanceService
         bool $applyCommission,
     ): Payout {
         $commissionPercent = $applyCommission
-            ? max(0, min(100, (float) config('legal.agent_commission_percent', 0)))
+            ? $this->commissionPercentFor($order, $caregiverId)
             : 0.0;
         $commissionAmount = $applyCommission
             ? (int) round($grossAmount * $commissionPercent / 100)
@@ -340,6 +341,22 @@ class OrderFinanceService
         }
 
         return $payout;
+    }
+
+    private function commissionPercentFor(Order $order, int $caregiverId): float
+    {
+        $signedContract = LegalContract::query()
+            ->where('type', LegalContract::TYPE_ORDER_SERVICE)
+            ->where('order_id', $order->id)
+            ->where('meta->caregiver_id', $caregiverId)
+            ->where('status', LegalContract::STATUS_SIGNED)
+            ->latest('id')
+            ->first();
+
+        $percent = $signedContract?->meta['commission_percent']
+            ?? config('legal.agent_commission_percent', 0);
+
+        return max(0, min(100, (float) $percent));
     }
 
     private function refundPayment(Payment $payment, string $reason): void
