@@ -176,7 +176,8 @@ class LegalContractService
                 ->max('version') + 1;
 
             $number = sprintf('ORD-%d-%d-%s-V%d', $order->id, $caregiver->id, now()->format('Ymd'), $version);
-            $minutes = $this->caregiverMinutes($order, $caregiver);
+            $contractSlots = $this->caregiverSlots($order, $caregiver);
+            $minutes = $this->minutesForSlots($order, $contractSlots);
             $serviceAmount = (int) ceil($minutes / 60) * (int) $order->hourly_budget;
             $commissionPercent = (float) config('legal.agent_commission_percent');
             $commissionAmount = (int) round($serviceAmount * $commissionPercent / 100);
@@ -196,6 +197,7 @@ class LegalContractService
                 'commissionAmount' => $commissionAmount,
                 'caregiverAmount' => $caregiverAmount,
                 'minutes' => $minutes,
+                'contractSlots' => $contractSlots,
             ])->render();
 
             return $this->persistContract(
@@ -215,6 +217,7 @@ class LegalContractService
                     'model' => 'platform_agent',
                     'client_id' => $order->client_id,
                     'caregiver_id' => $caregiver->id,
+                    'schedule_slot_ids' => $contractSlots->pluck('id')->values()->all(),
                     'service_amount' => $serviceAmount,
                     'commission_percent' => $commissionPercent,
                     'commission_amount' => $commissionAmount,
@@ -377,25 +380,25 @@ class LegalContractService
         }
     }
 
-    private function caregiverMinutes(Order $order, User $caregiver): int
+    private function caregiverSlots(Order $order, User $caregiver): Collection
     {
-        $assignments = $order->caregiverAssignments
+        $assignedSlots = $order->caregiverAssignments
             ->where('caregiver_id', $caregiver->id)
             ->whereIn('status', ['invited', 'accepted', 'completed'])
-            ->filter(fn ($assignment) => $assignment->scheduleSlot);
+            ->pluck('scheduleSlot')
+            ->filter()
+            ->unique('id')
+            ->values();
 
-        if ($assignments->isNotEmpty()) {
-            return max(60, (int) $assignments->sum(function ($assignment) {
-                $slot = $assignment->scheduleSlot;
-                $start = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->starts_at);
-                $end = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->ends_at);
+        return $assignedSlots->isNotEmpty()
+            ? $assignedSlots
+            : $order->scheduleSlots->values();
+    }
 
-                return max(0, $start->diffInMinutes($end));
-            }));
-        }
-
-        if ($order->scheduleSlots->isNotEmpty()) {
-            return max(60, (int) $order->scheduleSlots->sum(function (OrderScheduleSlot $slot) {
+    private function minutesForSlots(Order $order, Collection $slots): int
+    {
+        if ($slots->isNotEmpty()) {
+            return max(60, (int) $slots->sum(function (OrderScheduleSlot $slot) {
                 $start = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->starts_at);
                 $end = Carbon::parse($slot->scheduled_date->format('Y-m-d') . ' ' . $slot->ends_at);
 
