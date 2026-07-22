@@ -20,6 +20,16 @@ class RoleMiddleware
             abort(403);
         }
 
+        if ($user->isCrm() && ! $user->staff_active) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return redirect()->route('login')->withErrors([
+                'email' => 'Учётная запись сотрудника CRM отключена администратором.',
+            ]);
+        }
+
         return $next($request);
     }
 }
