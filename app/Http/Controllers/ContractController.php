@@ -14,7 +14,6 @@ class ContractController extends Controller
     public function caregiverLegal(Request $request)
     {
         $user = $request->user()->load(['contractProfile', 'documents']);
-
         abort_unless($user->isCaregiver(), 403);
 
         return view('contracts.profile', [
@@ -27,7 +26,6 @@ class ContractController extends Controller
     public function clientLegal(Request $request)
     {
         $user = $request->user()->load(['contractProfile', 'documents']);
-
         abort_unless($user->isClient(), 403);
 
         return view('contracts.profile', [
@@ -123,10 +121,18 @@ class ContractController extends Controller
 
     public function downloadDocument(Request $request, UserDocument $document): BinaryFileResponse
     {
-        abort_unless($request->user()->id === $document->user_id || $request->user()->isAdmin(), 403);
+        $user = $request->user();
+        $allowed = $user->id === $document->user_id
+            || $user->isAdmin()
+            || $user->hasStaffPermission('crm.documents.manage');
+
+        abort_unless($allowed, 403);
         abort_unless($document->file_path, 404);
 
-        return Storage::disk('public')->download($document->file_path, $document->original_name ?? basename($document->file_path));
+        return Storage::disk('public')->download(
+            $document->file_path,
+            $document->original_name ?? basename($document->file_path)
+        );
     }
 
     public function caregiverAgreement(Request $request)
