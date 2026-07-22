@@ -94,10 +94,10 @@ class PerShiftPayoutTest extends TestCase
             ])
             ->assertRedirect();
 
-        $this->assertDatabaseHas('order_caregiver_assignments', [
-            'id' => $firstAssignment->id,
-            'status' => 'completion_requested',
-        ]);
+        $requestedAssignment = $firstAssignment->fresh();
+        $this->assertSame('accepted', $requestedAssignment->status);
+        $this->assertNotNull($requestedAssignment->completion_requested_at);
+        $this->assertSame('Смена выполнена полностью.', $requestedAssignment->completion_note);
         $this->assertDatabaseCount('payouts', 0);
 
         $this->actingAs($client)
