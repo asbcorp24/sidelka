@@ -91,9 +91,11 @@
                             <li class="nav-item"><a class="btn btn-dark rounded-pill px-4" href="{{ route('crm.dashboard') }}">CRM</a></li>
                             <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('crm.people.index') }}">Люди</a></li>
                             <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('crm.contracts.index') }}">Договоры</a></li>
+                            <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('crm.finance.index') }}">Финансы</a></li>
                         @elseif(auth()->user()->isAdmin())
                             <li class="nav-item"><a class="btn btn-dark rounded-pill px-4" href="{{ route('crm.dashboard') }}">CRM</a></li>
                             <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('crm.contracts.index') }}">Договоры</a></li>
+                            <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('crm.finance.index') }}">Финансы</a></li>
                             <li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('admin.dashboard') }}">Админка</a></li>
                         @endif
                         <li class="nav-item">
