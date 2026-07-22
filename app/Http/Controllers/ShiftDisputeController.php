@@ -166,36 +166,16 @@ class ShiftDisputeController extends Controller
             $shiftDispute->loadMissing(['assignment.act', 'order']);
             $assignment = $shiftDispute->assignment;
             $act = $assignment->act;
+
+            if (! $act) {
+                throw ValidationException::withMessages(['act' => 'У смены отсутствует акт.']);
+            }
+
             $approved = match ($data['decision']) {
-                'approve_full' => (int) ($act?->gross_amount ?? 0),
-                'approve_partial' => (int) $data['approved_gross_amount'],
+                'approve_full' => (int) $act->gross_amount,
+                'approve_partial' => min((int) $data['approved_gross_amount'], (int) $act->gross_amount),
                 default => 0,
             };
-
-            if ($data['decision'] !== 'reject_payment') {
-                if (! $act) {
-                    throw ValidationException::withMessages(['act' => 'У смены отсутствует акт.']);
-                }
-                $act->update([
-                    'status' => ShiftAct::STATUS_SIGNED,
-                    'client_confirmed_at' => $act->client_confirmed_at ?: now(),
-                    'signed_at' => now(),
-                    'meta' => array_merge($act->meta ?? [], [
-                        'resolved_by_id' => $request->user()->id,
-                        'dispute_decision' => $data['decision'],
-                        'approved_gross_amount' => $approved,
-                    ]),
-                ]);
-                $this->settlements->settle($assignment, $approved);
-            } else {
-                $act?->update(['status' => ShiftAct::STATUS_CANCELLED]);
-                $assignment->update([
-                    'status' => 'completed',
-                    'client_confirmed_at' => now(),
-                    'completed_at' => now(),
-                    'payout_generated_at' => now(),
-                ]);
-            }
 
             $shiftDispute->update([
                 'status' => 'resolved',
@@ -205,6 +185,22 @@ class ShiftDisputeController extends Controller
                 'resolution' => $data['resolution'],
                 'resolved_at' => now(),
             ]);
+
+            $act->update([
+                'status' => $data['decision'] === 'reject_payment'
+                    ? ShiftAct::STATUS_CANCELLED
+                    : ShiftAct::STATUS_SIGNED,
+                'client_confirmed_at' => $act->client_confirmed_at ?: now(),
+                'signed_at' => $data['decision'] === 'reject_payment' ? null : now(),
+                'meta' => array_merge($act->meta ?? [], [
+                    'resolved_by_id' => $request->user()->id,
+                    'dispute_decision' => $data['decision'],
+                    'approved_gross_amount' => $approved,
+                    'resolution' => $data['resolution'],
+                ]),
+            ]);
+
+            $this->settlements->settle($assignment, $approved);
 
             $shiftDispute->messages()->create([
                 'author_id' => $request->user()->id,
