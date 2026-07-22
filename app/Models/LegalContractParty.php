@@ -30,6 +30,13 @@ class LegalContractParty extends Model
         'signed_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::creating(function (self $party) {
+            $party->public_token = bin2hex(random_bytes(32));
+        });
+    }
+
     public function getRouteKeyName(): string
     {
         return 'public_token';
