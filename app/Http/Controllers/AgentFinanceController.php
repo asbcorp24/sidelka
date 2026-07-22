@@ -21,7 +21,7 @@ class AgentFinanceController extends Controller
         abort_unless($request->user()->isAdmin() || $request->user()->isCrm(), 403);
 
         $query = Payout::query()
-            ->with(['order', 'payment', 'caregiver.contractProfile'])
+            ->with(['order', 'payment', 'assignment.scheduleSlot', 'caregiver.contractProfile'])
             ->latest('id');
 
         if ($request->filled('status')) {
@@ -83,13 +83,12 @@ class AgentFinanceController extends Controller
                 'paid_at' => now(),
             ]);
 
-            $locked->load('order');
-            if ($locked->order && ! $locked->order->payouts()->whereIn('status', ['pending', 'processing'])->exists()) {
-                $locked->order->update(['payment_status' => 'released']);
-            }
-
             return [$locked->fresh(['caregiver', 'order']), true];
         });
+
+        if ($paidPayout->order) {
+            $this->financeService->syncOrderPaymentStatus($paidPayout->order);
+        }
 
         if ($changed) {
             $this->financeService->notify(
