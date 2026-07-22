@@ -7,24 +7,17 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
-    /**
-     * Define the application's command schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
     protected function schedule(Schedule $schedule)
     {
         $schedule->command('shifts:settle-overdue')
             ->hourly()
             ->withoutOverlapping();
+
+        $schedule->command('caregivers:check-documents')
+            ->dailyAt('08:00')
+            ->withoutOverlapping();
     }
 
-    /**
-     * Register the commands for the application.
-     *
-     * @return void
-     */
     protected function commands()
     {
         $this->load(__DIR__.'/Commands');
