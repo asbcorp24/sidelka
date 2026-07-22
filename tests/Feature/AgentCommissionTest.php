@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\LegalContract;
 use App\Models\Order;
 use App\Models\OrderCaregiverAssignment;
+use App\Models\Payout;
 use App\Models\User;
 use App\Services\OrderFinanceService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,7 +16,7 @@ class AgentCommissionTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_payout_uses_commission_from_signed_order_contract(): void
+    public function test_payout_uses_signed_commission_and_requires_crm_confirmation(): void
     {
         config(['legal.agent_commission_percent' => 5]);
 
@@ -96,7 +97,8 @@ class AgentCommissionTest extends TestCase
             'gross_amount' => 2400,
             'commission_amount' => 300,
             'amount' => 2100,
-            'status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => null,
         ]);
 
         $this->assertDatabaseHas('agent_commissions', [
@@ -106,5 +108,25 @@ class AgentCommissionTest extends TestCase
             'amount' => 300,
             'status' => 'recognized',
         ]);
+
+        $payout = Payout::firstOrFail();
+        $crm = User::factory()->create([
+            'role' => 'crm',
+            'email_verified_at' => now(),
+        ]);
+
+        $this->actingAs($crm)
+            ->patch(route('crm.payouts.paid', $payout), [
+                'destination' => 'СБП +7 999 000-00-00',
+                'external_reference' => 'BANK-TEST-123',
+            ])
+            ->assertRedirect();
+
+        $this->assertDatabaseHas('payouts', [
+            'id' => $payout->id,
+            'status' => 'paid',
+            'external_reference' => 'BANK-TEST-123',
+        ]);
+        $this->assertNotNull($payout->fresh()->paid_at);
     }
 }
