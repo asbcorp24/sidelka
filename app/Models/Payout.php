@@ -31,6 +31,15 @@ class Payout extends Model
         'paid_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::created(function (self $payout) {
+            if ($payout->status !== 'paid') {
+                $payout->order()->update(['payment_status' => 'payout_pending']);
+            }
+        });
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
