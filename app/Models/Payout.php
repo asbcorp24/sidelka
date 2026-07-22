@@ -13,6 +13,7 @@ class Payout extends Model
 
     protected $fillable = [
         'order_id',
+        'order_caregiver_assignment_id',
         'payment_id',
         'caregiver_id',
         'gross_amount',
@@ -43,6 +44,11 @@ class Payout extends Model
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
+    }
+
+    public function assignment(): BelongsTo
+    {
+        return $this->belongsTo(OrderCaregiverAssignment::class, 'order_caregiver_assignment_id');
     }
 
     public function payment(): BelongsTo
