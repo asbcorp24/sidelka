@@ -6,6 +6,7 @@ use App\Models\CarePlan;
 use App\Models\Order;
 use App\Models\OrderCaregiverAssignment;
 use App\Models\ShiftJournal;
+use App\Services\OrderBalanceClosureService;
 use App\Services\OrderFinanceService;
 use App\Services\ShiftActService;
 use App\Services\ShiftSettlementService;
@@ -21,6 +22,7 @@ class ShiftCompletionController extends Controller
         private OrderFinanceService $financeService,
         private ShiftActService $acts,
         private ShiftSettlementService $settlements,
+        private OrderBalanceClosureService $balanceClosure,
     ) {
     }
 
@@ -158,24 +160,34 @@ class ShiftCompletionController extends Controller
             throw ValidationException::withMessages(['shift' => 'Нельзя закрыть заказ без хотя бы одной завершенной смены.']);
         }
 
-        DB::transaction(function () use ($order, $user) {
+        $refunded = DB::transaction(function () use ($order, $user) {
             $this->financeService->releaseHeldPayments($order->fresh([
                 'client', 'caregiver', 'caregiverAssignments.caregiver',
                 'caregiverAssignments.scheduleSlot', 'scheduleSlots', 'payments',
             ]));
 
+            $refundedAmount = $this->balanceClosure->refundUnusedBasePayment(
+                $order->fresh(),
+                'Возврат неиспользованной части после окончательного расчета по сменам',
+            );
+
             $order->update(['status' => 'completed']);
+            $this->financeService->syncOrderPaymentStatus($order->fresh());
 
             foreach ($order->conversations->where('status', 'active') as $conversation) {
                 $conversation->messages()->create([
                     'sender_id' => $user->id,
-                    'body' => 'Все смены заказа завершены. Акты и выплаты сформированы отдельно по каждой сиделке.',
+                    'body' => 'Все смены заказа завершены. Акты и выплаты сформированы отдельно по каждой сиделке.'
+                        . ($refundedAmount > 0 ? ' Неиспользованный остаток возвращён заказчику.' : ''),
                 ]);
             }
+
+            return $refundedAmount;
         });
 
         return redirect()->route('client.orders.show', $order)
-            ->with('status', 'Заказ завершен. Каждая смена оформлена отдельным актом.');
+            ->with('status', 'Заказ завершен. Каждая смена оформлена отдельным актом.'
+                . ($refunded > 0 ? ' Возвращено на баланс: ' . number_format($refunded, 0, ',', ' ') . ' ₽.' : ''));
     }
 
     private function assertShiftEnded(OrderCaregiverAssignment $assignment): void
