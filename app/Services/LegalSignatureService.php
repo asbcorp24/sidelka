@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Models\LegalContract;
 use App\Models\LegalContractParty;
 use App\Models\LegalContractSignature;
-use App\Models\LegalSignatureChallenge;
 use App\Notifications\ContractSigningCodeNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -131,6 +130,12 @@ class LegalSignatureService
                 ]);
             }
 
+            if ($contract->expires_at && $contract->expires_at->isPast()) {
+                throw ValidationException::withMessages([
+                    'code' => 'Срок подписания договора истёк.',
+                ]);
+            }
+
             LegalContractSignature::firstOrCreate(
                 ['legal_contract_party_id' => $lockedParty->id],
                 [
@@ -242,7 +247,17 @@ class LegalSignatureService
             return ['mail', $email];
         }
 
-        if ($requested === 'log' || app()->environment(['local', 'testing'])) {
+        if ($requested === 'log') {
+            if (! app()->environment(['local', 'testing'])) {
+                throw ValidationException::withMessages([
+                    'code' => 'Канал log запрещён на рабочем сервере. Настройте SMS.RU или email.',
+                ]);
+            }
+
+            return ['log', $phone ?: $email ?: 'application-log'];
+        }
+
+        if (app()->environment(['local', 'testing'])) {
             return ['log', $phone ?: $email ?: 'application-log'];
         }
 
