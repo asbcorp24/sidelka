@@ -22,10 +22,10 @@ return new class extends Migration
                 $table->longText('body_html');
                 $table->char('document_hash', 64);
                 $table->json('meta')->nullable();
-                $table->timestamp('sent_at')->nullable();
-                $table->timestamp('signed_at')->nullable();
-                $table->timestamp('cancelled_at')->nullable();
-                $table->timestamp('expires_at')->nullable();
+                $table->dateTime('sent_at')->nullable();
+                $table->dateTime('signed_at')->nullable();
+                $table->dateTime('cancelled_at')->nullable();
+                $table->dateTime('expires_at')->nullable();
                 $table->timestamps();
 
                 $table->index(['order_id', 'type', 'status']);
@@ -44,7 +44,7 @@ return new class extends Migration
                 $table->string('phone', 64)->nullable();
                 $table->boolean('is_required')->default(true);
                 $table->string('status', 24)->default('pending')->index();
-                $table->timestamp('signed_at')->nullable();
+                $table->dateTime('signed_at')->nullable();
                 $table->timestamps();
 
                 $table->index(['legal_contract_id', 'role']);
@@ -63,9 +63,9 @@ return new class extends Migration
                 $table->unsignedTinyInteger('max_attempts')->default(5);
                 $table->string('provider_message_id')->nullable();
                 $table->ipAddress('request_ip')->nullable();
-                $table->timestamp('sent_at')->nullable();
-                $table->timestamp('expires_at');
-                $table->timestamp('consumed_at')->nullable();
+                $table->dateTime('sent_at')->nullable();
+                $table->dateTime('expires_at');
+                $table->dateTime('consumed_at')->nullable();
                 $table->timestamps();
 
                 $table->index(['legal_contract_party_id', 'expires_at']);
@@ -82,7 +82,7 @@ return new class extends Migration
                 $table->string('channel', 16);
                 $table->string('destination')->nullable();
                 $table->char('document_hash', 64);
-                $table->timestamp('signed_at');
+                $table->dateTime('signed_at');
                 $table->ipAddress('ip_address')->nullable();
                 $table->text('user_agent')->nullable();
                 $table->json('evidence')->nullable();
