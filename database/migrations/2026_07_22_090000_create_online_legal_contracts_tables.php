@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -28,7 +29,7 @@ return new class extends Migration
                 $table->dateTime('expires_at')->nullable();
                 $table->timestamps();
 
-                $table->index(['order_id', 'type', 'status']);
+                $table->index(['order_id', 'type', 'status'], 'lc_order_type_status_idx');
             });
         }
 
@@ -47,8 +48,8 @@ return new class extends Migration
                 $table->dateTime('signed_at')->nullable();
                 $table->timestamps();
 
-                $table->index(['legal_contract_id', 'role']);
-                $table->index(['user_id', 'status']);
+                $table->index(['legal_contract_id', 'role'], 'lcp_contract_role_idx');
+                $table->index(['user_id', 'status'], 'lcp_user_status_idx');
             });
         }
 
@@ -68,9 +69,17 @@ return new class extends Migration
                 $table->dateTime('consumed_at')->nullable();
                 $table->timestamps();
 
-                $table->index(['legal_contract_party_id', 'expires_at']);
+                $table->index(['legal_contract_party_id', 'expires_at'], 'lsc_party_exp_idx');
             });
         }
+
+        // MySQL мог создать таблицу до падения на слишком длинном имени индекса.
+        // В таком случае повторный запуск добавляет только отсутствующий короткий индекс.
+        $this->ensureIndex(
+            'legal_signature_challenges',
+            'lsc_party_exp_idx',
+            ['legal_contract_party_id', 'expires_at']
+        );
 
         if (! Schema::hasTable('legal_contract_signatures')) {
             Schema::create('legal_contract_signatures', function (Blueprint $table) {
@@ -88,7 +97,7 @@ return new class extends Migration
                 $table->json('evidence')->nullable();
                 $table->timestamps();
 
-                $table->index(['legal_contract_id', 'signed_at']);
+                $table->index(['legal_contract_id', 'signed_at'], 'lcs_contract_signed_idx');
             });
         }
 
@@ -103,7 +112,7 @@ return new class extends Migration
                 $table->text('user_agent')->nullable();
                 $table->timestamps();
 
-                $table->index(['legal_contract_id', 'created_at']);
+                $table->index(['legal_contract_id', 'created_at'], 'lce_contract_created_idx');
             });
         }
     }
@@ -115,5 +124,27 @@ return new class extends Migration
         Schema::dropIfExists('legal_signature_challenges');
         Schema::dropIfExists('legal_contract_parties');
         Schema::dropIfExists('legal_contracts');
+    }
+
+    private function ensureIndex(string $table, string $index, array $columns): void
+    {
+        if (! Schema::hasTable($table)) {
+            return;
+        }
+
+        $exists = DB::selectOne(
+            'SELECT COUNT(*) AS aggregate
+             FROM information_schema.statistics
+             WHERE table_schema = DATABASE()
+               AND table_name = ?
+               AND index_name = ?',
+            [$table, $index]
+        );
+
+        if ((int) ($exists->aggregate ?? 0) === 0) {
+            Schema::table($table, function (Blueprint $blueprint) use ($columns, $index) {
+                $blueprint->index($columns, $index);
+            });
+        }
     }
 };
