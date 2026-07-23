@@ -24,12 +24,12 @@ return new class extends Migration
         Schema::table('user_documents', function (Blueprint $table) {
             $table->boolean('is_required')->default(false)->after('verification_status');
             $table->boolean('blocks_assignments')->default(false)->after('is_required');
-            $table->timestamp('verified_at')->nullable()->after('blocks_assignments');
+            $table->dateTime('verified_at')->nullable()->after('blocks_assignments');
             $table->foreignId('verified_by_id')->nullable()->after('verified_at')->constrained('users')->nullOnDelete();
-            $table->timestamp('reminder_30_at')->nullable();
-            $table->timestamp('reminder_14_at')->nullable();
-            $table->timestamp('reminder_3_at')->nullable();
-            $table->timestamp('expired_task_at')->nullable();
+            $table->dateTime('reminder_30_at')->nullable();
+            $table->dateTime('reminder_14_at')->nullable();
+            $table->dateTime('reminder_3_at')->nullable();
+            $table->dateTime('expired_task_at')->nullable();
         });
 
         Schema::create('shift_acts', function (Blueprint $table) {
@@ -46,14 +46,14 @@ return new class extends Migration
             $table->unsignedBigInteger('gross_amount')->default(0);
             $table->unsignedBigInteger('commission_amount')->default(0);
             $table->unsignedBigInteger('payout_amount')->default(0);
-            $table->timestamp('caregiver_confirmed_at')->nullable();
-            $table->timestamp('client_confirmed_at')->nullable();
+            $table->dateTime('caregiver_confirmed_at')->nullable();
+            $table->dateTime('client_confirmed_at')->nullable();
             $table->ipAddress('caregiver_ip')->nullable();
             $table->ipAddress('client_ip')->nullable();
             $table->text('caregiver_user_agent')->nullable();
             $table->text('client_user_agent')->nullable();
-            $table->timestamp('signed_at')->nullable();
-            $table->timestamp('disputed_at')->nullable();
+            $table->dateTime('signed_at')->nullable();
+            $table->dateTime('disputed_at')->nullable();
             $table->json('meta')->nullable();
             $table->timestamps();
 
@@ -76,8 +76,8 @@ return new class extends Migration
             $table->string('decision', 48)->nullable();
             $table->unsignedBigInteger('approved_gross_amount')->nullable();
             $table->text('resolution')->nullable();
-            $table->timestamp('opened_at');
-            $table->timestamp('resolved_at')->nullable();
+            $table->dateTime('opened_at');
+            $table->dateTime('resolved_at')->nullable();
             $table->timestamps();
 
             $table->index(['order_id', 'status']);
@@ -113,8 +113,8 @@ return new class extends Migration
             $table->string('emergency_contact_name')->nullable();
             $table->string('emergency_contact_phone', 64)->nullable();
             $table->text('notes')->nullable();
-            $table->timestamp('effective_from')->nullable();
-            $table->timestamp('effective_to')->nullable();
+            $table->dateTime('effective_from')->nullable();
+            $table->dateTime('effective_to')->nullable();
             $table->timestamps();
         });
 
@@ -137,8 +137,8 @@ return new class extends Migration
             $table->foreignId('care_plan_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('caregiver_id')->constrained('users')->cascadeOnDelete();
             $table->string('status', 24)->default('draft')->index();
-            $table->timestamp('arrived_at')->nullable();
-            $table->timestamp('left_at')->nullable();
+            $table->dateTime('arrived_at')->nullable();
+            $table->dateTime('left_at')->nullable();
             $table->text('summary')->nullable();
             $table->text('observations')->nullable();
             $table->json('vitals')->nullable();
@@ -147,8 +147,8 @@ return new class extends Migration
             $table->json('hygiene')->nullable();
             $table->json('mobility')->nullable();
             $table->text('client_comment')->nullable();
-            $table->timestamp('submitted_at')->nullable();
-            $table->timestamp('accepted_at')->nullable();
+            $table->dateTime('submitted_at')->nullable();
+            $table->dateTime('accepted_at')->nullable();
             $table->timestamps();
 
             $table->index(['order_id', 'status']);
@@ -162,7 +162,7 @@ return new class extends Migration
             $table->string('title');
             $table->text('value')->nullable();
             $table->string('unit', 32)->nullable();
-            $table->timestamp('happened_at');
+            $table->dateTime('happened_at');
             $table->text('notes')->nullable();
             $table->boolean('is_alert')->default(false)->index();
             $table->timestamps();
@@ -179,13 +179,13 @@ return new class extends Migration
             $table->string('incident_type', 64)->index();
             $table->string('severity', 16)->index();
             $table->string('status', 24)->default('open')->index();
-            $table->timestamp('occurred_at');
+            $table->dateTime('occurred_at');
             $table->text('description');
             $table->text('actions_taken')->nullable();
             $table->boolean('emergency_called')->default(false);
             $table->string('emergency_service_reference')->nullable();
-            $table->timestamp('client_notified_at')->nullable();
-            $table->timestamp('resolved_at')->nullable();
+            $table->dateTime('client_notified_at')->nullable();
+            $table->dateTime('resolved_at')->nullable();
             $table->text('resolution')->nullable();
             $table->timestamps();
 
