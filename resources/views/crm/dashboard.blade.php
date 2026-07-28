@@ -9,27 +9,52 @@
             <div class="text-uppercase small text-secondary">Телефонные обращения и подбор</div>
             <h1 class="section-title mb-0">CRM Сиделка24</h1>
         </div>
-        <div class="d-flex gap-2">
+        <div class="d-flex gap-2 flex-wrap">
             <a href="{{ route('crm.people.index') }}" class="btn btn-outline-dark rounded-pill px-4">Клиенты и сиделки</a>
+            <a href="{{ route('crm.kanban') }}" class="btn btn-outline-dark rounded-pill px-4">Kanban</a>
+            <a href="{{ route('crm.long-orders.index') }}" class="btn btn-outline-dark rounded-pill px-4">Долгие заказы</a>
+            @if(auth()->user()->hasStaffPermission('crm.disputes.manage') || auth()->user()->isAdmin())
+                <a href="{{ route('crm.quality.index') }}" class="btn btn-outline-danger rounded-pill px-4">Качество</a>
+            @endif
             @if(auth()->user()->isAdmin())
                 <a href="{{ route('admin.dashboard') }}" class="btn btn-dark rounded-pill px-4">Админка</a>
             @endif
         </div>
     </div>
 
-    <div class="row g-3 mb-4">
+    <div class="row g-3 mb-3">
         <div class="col-md"><div class="metric"><div class="value">{{ $stats['new'] }}</div><div>Новых звонков</div></div></div>
         <div class="col-md"><div class="metric"><div class="value">{{ $stats['searching'] }}</div><div>В подборе</div></div></div>
         <div class="col-md"><div class="metric"><div class="value">{{ $stats['waiting'] }}</div><div>На согласовании</div></div></div>
-        <div class="col-md"><div class="metric"><div class="value">{{ $stats['active'] }}</div><div>Оформлено / в работе</div></div></div>
+        <div class="col-md"><div class="metric"><div class="value">{{ $stats['active'] }}</div><div>Согласовано / в работе</div></div></div>
+        <div class="col-md"><div class="metric"><div class="value">{{ $stats['long_orders'] }}</div><div>Долгих заказов</div></div></div>
         <div class="col-md"><div class="metric {{ $stats['overdue_tasks'] ? 'crm-overdue' : '' }}"><div class="value">{{ $stats['overdue_tasks'] }}</div><div>Просроченных задач</div></div></div>
+    </div>
+
+    <div class="card-soft p-4 mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <h2 class="h4 mb-0">Воронка заявок</h2>
+            <span class="text-secondary small">Онлайн-статусы CRM</span>
+        </div>
+        <div class="row g-3">
+            @foreach($stats['funnel'] as $stage)
+                <div class="col-6 col-md">
+                    <div class="border rounded-4 p-3 h-100">
+                        <div class="d-flex justify-content-between align-items-center gap-2">
+                            <span class="fw-semibold">{{ $stage['label'] }}</span>
+                            <span class="badge {{ $stage['class'] }}">{{ $stage['count'] }}</span>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
     </div>
 
     <div class="row g-4 align-items-start">
         <div class="col-xl-4">
             <div class="card-soft p-4 position-sticky" style="top: 1rem;">
                 <h2 class="h4 mb-2">Принять телефонную заявку</h2>
-                <p class="small text-secondary">Заполните главное во время разговора. Остальное можно уточнить в карточке заявки.</p>
+                <p class="small text-secondary">Заполните главное во время разговора. Остальное можно уточнить в карточке заявки. Если ответственный не выбран, CRM распределит заявку автоматически.</p>
                 <form action="{{ route('crm.requests.store') }}" method="POST" class="row g-3">
                     @csrf
                     <div class="col-md-6"><input type="text" name="caller_name" value="{{ old('caller_name') }}" class="form-control" placeholder="Кто звонит" required></div>
@@ -51,9 +76,10 @@
                             @endforeach
                         </select>
                     </div>
+                    <div class="col-12"><input type="number" min="0" name="lead_cost" value="{{ old('lead_cost') }}" class="form-control" placeholder="Стоимость лида, ₽ (если ведете источник)"></div>
                     <div class="col-12">
                         <select name="responsible_user_id" class="form-select">
-                            <option value="">Ответственный: я</option>
+                            <option value="">Автораспределение / назначить мне</option>
                             @foreach($employees as $employee)
                                 <option value="{{ $employee->id }}">{{ $employee->name }}</option>
                             @endforeach
@@ -106,7 +132,7 @@
                         <thead><tr><th>Заявка</th><th>Контакт</th><th>Потребность</th><th>Ответственный</th><th>Следующий контакт</th></tr></thead>
                         <tbody>
                         @forelse($requests as $item)
-                            <tr class="{{ $item->next_contact_at && $item->next_contact_at->isPast() && !in_array($item->status, ['completed','cancelled']) ? 'table-danger' : '' }}">
+                            <tr class="{{ $item->next_contact_at && $item->next_contact_at->isPast() && !in_array($item->status, ['completed', 'cancelled']) ? 'table-danger' : '' }}">
                                 <td>
                                     <a class="fw-bold text-decoration-none" href="{{ route('crm.requests.show', $item) }}">{{ strtoupper(substr($item->public_id, 0, 8)) }}</a>
                                     <div class="mt-1"><span class="badge {{ $item->status_badge_class }}">{{ $item->status_label }}</span></div>
@@ -127,7 +153,10 @@
             </div>
 
             <div class="card-soft p-4">
-                <h2 class="h4 mb-3">Мои ближайшие задачи</h2>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <h2 class="h4 mb-0">Мои ближайшие задачи</h2>
+                    <span class="text-secondary small">Напоминания и просрочка по звонкам</span>
+                </div>
                 @forelse($tasks as $task)
                     <div class="border rounded-4 p-3 mb-2 {{ $task->due_at && $task->due_at->isPast() ? 'crm-overdue' : '' }}">
                         <div class="d-flex justify-content-between gap-3 flex-wrap">
@@ -138,7 +167,11 @@
                                     • {{ $task->due_at?->format('d.m.Y H:i') ?: 'без срока' }}
                                 </div>
                             </div>
-                            <form action="{{ route('crm.tasks.complete', $task) }}" method="POST">@csrf @method('PATCH')<button class="btn btn-sm btn-outline-success">Выполнено</button></form>
+                            <form action="{{ route('crm.tasks.complete', $task) }}" method="POST">
+                                @csrf
+                                @method('PATCH')
+                                <button class="btn btn-sm btn-outline-success">Выполнено</button>
+                            </form>
                         </div>
                     </div>
                 @empty

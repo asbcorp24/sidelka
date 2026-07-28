@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 class Order extends Model
@@ -14,12 +15,12 @@ class Order extends Model
     use HasFactory;
 
     public const STATUS_LABELS = [
-        'published' => 'Опубликован',
-        'matched' => 'Ожидает подтверждения',
-        'in_chat' => 'Согласование',
-        'in_progress' => 'В работе',
-        'completed' => 'Завершен',
-        'cancelled' => 'Отменен',
+        'published' => 'Ищем сиделку',
+        'matched' => 'Приглашение отправлено',
+        'in_chat' => 'Сиделка подтверждена',
+        'in_progress' => 'Смена идет',
+        'completed' => 'Завершено',
+        'cancelled' => 'Отменено',
     ];
 
     public const PAYMENT_STATUS_LABELS = [
@@ -36,7 +37,7 @@ class Order extends Model
     public const STATUS_BADGE_CLASSES = [
         'published' => 'text-bg-secondary',
         'matched' => 'text-bg-warning',
-        'in_chat' => 'text-bg-info',
+        'in_chat' => 'text-bg-primary',
         'in_progress' => 'text-bg-primary',
         'completed' => 'text-bg-success',
         'cancelled' => 'text-bg-dark',
@@ -174,8 +175,30 @@ class Order extends Model
         return $this->hasMany(OrderCaregiverAssignment::class);
     }
 
+    public function patientProfile(): HasOne
+    {
+        return $this->hasOne(PatientProfile::class);
+    }
+
+    public function reports(): HasMany
+    {
+        return $this->hasMany(UserReport::class);
+    }
+
     public function getStatusLabelAttribute(): string
     {
+        $assignments = $this->relationLoaded('caregiverAssignments')
+            ? $this->caregiverAssignments
+            : $this->caregiverAssignments()->get();
+
+        if ($this->status === 'in_progress' && $assignments->contains(fn (OrderCaregiverAssignment $assignment) => $assignment->completion_requested_at !== null && $assignment->status !== 'completed')) {
+            return 'Ожидает подтверждения';
+        }
+
+        if ($this->status === 'published' && $assignments->contains(fn (OrderCaregiverAssignment $assignment) => $assignment->status === 'applied')) {
+            return 'Есть отклики';
+        }
+
         return self::STATUS_LABELS[$this->status] ?? $this->status;
     }
 
@@ -186,6 +209,18 @@ class Order extends Model
 
     public function getStatusBadgeClassAttribute(): string
     {
+        $assignments = $this->relationLoaded('caregiverAssignments')
+            ? $this->caregiverAssignments
+            : $this->caregiverAssignments()->get();
+
+        if ($this->status === 'in_progress' && $assignments->contains(fn (OrderCaregiverAssignment $assignment) => $assignment->completion_requested_at !== null && $assignment->status !== 'completed')) {
+            return 'text-bg-warning';
+        }
+
+        if ($this->status === 'published' && $assignments->contains(fn (OrderCaregiverAssignment $assignment) => $assignment->status === 'applied')) {
+            return 'text-bg-info';
+        }
+
         return self::STATUS_BADGE_CLASSES[$this->status] ?? 'text-bg-light';
     }
 

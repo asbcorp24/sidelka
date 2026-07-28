@@ -15,27 +15,34 @@
                     </div>
                     <div class="text-lg-end">
                         <div class="price-tag">от {{ number_format($profile->hourly_rate_from, 0, ',', ' ') }} ₽/час</div>
-                        <span class="badge {{ $profile->documents_verified ? 'text-bg-success' : 'text-bg-warning' }}">{{ $profile->documents_verified ? 'Документы проверены' : 'Документы на проверке' }}</span>
+                        <span class="badge {{ $profile->documents_verified ? 'text-bg-success' : 'text-bg-warning' }}">
+                            {{ $profile->documents_verified ? 'Документы проверены' : 'Документы на проверке' }}
+                        </span>
                     </div>
                 </div>
+
                 <p class="lead">{{ $profile->bio }}</p>
+
                 <div class="mb-4">
                     <h2 class="h5">Навыки</h2>
                     <p class="mb-2"><strong>Медицинские:</strong> {{ $profile->medical_skills }}</p>
                     <p class="mb-0"><strong>Бытовые:</strong> {{ $profile->household_skills }}</p>
                 </div>
+
                 <div class="mb-4">
                     <h2 class="h5">Может выполнять</h2>
                     @foreach($profile->availableServices() as $service)
                         <span class="service-chip">{{ $service->name }}</span>
                     @endforeach
                 </div>
+
                 <div class="mb-4">
                     <h2 class="h5">Не выполняет</h2>
                     @foreach($profile->restrictedServices() as $service)
                         <span class="availability-chip text-danger bg-danger-subtle">{{ $service->name }}</span>
                     @endforeach
                 </div>
+
                 <div>
                     <h2 class="h5">Доступность</h2>
                     @foreach($profile->availabilitySlots as $slot)
@@ -52,6 +59,7 @@
                     <h2 class="h4 mb-0">Отзывы о сиделке</h2>
                     <span class="text-secondary">Рейтинг {{ number_format((float) $profile->user->rating, 1, ',', ' ') }}</span>
                 </div>
+
                 @forelse($reviews as $review)
                     <div class="border rounded-4 p-3 mb-3">
                         <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
@@ -79,13 +87,29 @@
                     <li>отзывы и история завершенных заказов</li>
                 </ul>
             </div>
+
             <div class="card-soft p-4">
                 <h2 class="h4">Заинтересовала сиделка?</h2>
-                <p class="text-secondary">Если анкета подходит, переходите к оформлению заказа. На следующей странице вы укажете даты, время, услуги и условия ухода, а заказ сразу уйдет этой сиделке.</p>
+                <p class="text-secondary">
+                    Если анкета подходит, переходите к оформлению заказа. На следующей странице вы укажете даты, время, услуги и условия ухода, а заказ сразу уйдет этой сиделке.
+                </p>
                 <div class="d-grid gap-2">
                     <a href="{{ route('caregivers.index') }}" class="btn btn-dark rounded-pill">Вернуться в каталог</a>
                     @auth
                         @if(auth()->user()->isClient())
+                            @php($isFavorite = auth()->user()->favoriteCaregivers()->where('caregiver_id', $profile->user_id)->exists())
+                            @if($isFavorite)
+                                <form action="{{ route('client.favorites.destroy', $profile) }}" method="POST">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button class="btn btn-outline-danger rounded-pill w-100">Убрать из избранного</button>
+                                </form>
+                            @else
+                                <form action="{{ route('client.favorites.store', $profile) }}" method="POST">
+                                    @csrf
+                                    <button class="btn btn-outline-warning rounded-pill w-100">Добавить в избранное</button>
+                                </form>
+                            @endif
                             <a href="{{ route('client.orders.create_for_caregiver', $profile) }}" class="btn btn-outline-dark rounded-pill">Оформить заказ</a>
                         @else
                             <a href="{{ route('register') }}" class="btn btn-outline-dark rounded-pill">Зарегистрироваться как клиент</a>

@@ -23,6 +23,7 @@
         <div class="col-lg-8">
             <div class="card-soft p-4 mb-4">
                 <p>{{ $order->description }}</p>
+
                 <div class="d-flex flex-wrap gap-2 mb-3">
                     @foreach($order->services as $service)
                         <span class="service-chip">{{ $service->name }}</span>
@@ -31,6 +32,35 @@
                         <span class="availability-chip border border-dark-subtle">{{ $customService }}</span>
                     @endforeach
                 </div>
+
+                @if($order->patientProfile)
+                    <div class="border rounded-4 p-3 mb-4 bg-light">
+                        <h2 class="h5 mb-3">Карточка пациента</h2>
+                        <div class="row g-3 small">
+                            @if($order->patientProfile->diagnosis)
+                                <div class="col-md-6"><strong>Диагноз:</strong><br>{{ $order->patientProfile->diagnosis }}</div>
+                            @endif
+                            @if($order->patientProfile->limitations)
+                                <div class="col-md-6"><strong>Ограничения:</strong><br>{{ $order->patientProfile->limitations }}</div>
+                            @endif
+                            @if($order->patientProfile->daily_routine)
+                                <div class="col-md-6"><strong>Режим дня:</strong><br>{{ $order->patientProfile->daily_routine }}</div>
+                            @endif
+                            @if($order->patientProfile->medications)
+                                <div class="col-md-6"><strong>Лекарства:</strong><br>{{ $order->patientProfile->medications }}</div>
+                            @endif
+                            @if($order->patientProfile->care_features)
+                                <div class="col-md-6"><strong>Особенности ухода:</strong><br>{{ $order->patientProfile->care_features }}</div>
+                            @endif
+                            @if($order->patientProfile->emergency_contact_name || $order->patientProfile->emergency_contact_phone)
+                                <div class="col-md-6">
+                                    <strong>Экстренный контакт:</strong><br>
+                                    {{ $order->patientProfile->emergency_contact_name }}{{ $order->patientProfile->emergency_contact_phone ? ' • '.$order->patientProfile->emergency_contact_phone : '' }}
+                                </div>
+                            @endif
+                        </div>
+                    </div>
+                @endif
 
                 @if($order->scheduleSlots->isNotEmpty())
                     <div class="mb-3">
@@ -244,6 +274,98 @@
                 @endif
             </div>
 
+            @if($order->assignedCaregivers->isNotEmpty())
+                <div class="card-soft p-4 mb-4">
+                    <h2 class="h4 mb-3">Жалоба или черный список</h2>
+                    <form action="{{ route('orders.report.store', $order) }}" method="POST" class="row g-3">
+                        @csrf
+                        <div class="col-12">
+                            <select name="reported_user_id" class="form-select" required>
+                                <option value="">Выберите сиделку</option>
+                                @foreach($order->assignedCaregivers as $caregiver)
+                                    <option value="{{ $caregiver->id }}">{{ $caregiver->name }}</option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <select name="kind" class="form-select" required>
+                                <option value="complaint">Жалоба</option>
+                                <option value="blacklist">Добавить в черный список</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <input type="text" name="reason" class="form-control" placeholder="Коротко: причина обращения" required>
+                        </div>
+                        <div class="col-12">
+                            <textarea name="details" class="form-control" rows="3" placeholder="Опишите ситуацию подробнее"></textarea>
+                        </div>
+                        <div class="col-12">
+                            <button class="btn btn-outline-danger rounded-pill w-100">Отправить в CRM качества</button>
+                        </div>
+                    </form>
+                </div>
+            @endif
+
+            @if($order->applicantCaregivers->isNotEmpty())
+                <div class="card-soft p-4 mb-4">
+                    <h2 class="h4 mb-3">Откликнувшиеся сиделки</h2>
+                    @foreach($order->applicantCaregivers as $caregiver)
+                        @php($caregiverApplications = $order->caregiverAssignments->where('caregiver_id', $caregiver->id)->whereIn('status', ['applied', 'reserved'])->values())
+                        <div class="border rounded-4 p-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+                                <div>
+                                    <strong>{{ $caregiver->name }}</strong>
+                                    <div class="text-secondary small">
+                                        {{ $caregiver->caregiverProfile->experience_years ?? 0 }} лет опыта
+                                        • от {{ number_format($caregiver->caregiverProfile->hourly_rate_from ?? 0, 0, ',', ' ') }} ₽/час
+                                    </div>
+                                </div>
+                                <span class="badge text-bg-primary">Отклик получен</span>
+                            </div>
+
+                            @if($caregiverApplications->isNotEmpty())
+                                <div class="mt-3">
+                                    <div class="small fw-semibold mb-2">Какие смены сиделка готова взять:</div>
+                                    <form action="{{ route('client.orders.applicants.confirm', [$order, $caregiver]) }}" method="POST">
+                                        @csrf
+                                        @foreach($caregiverApplications as $application)
+                                            @php($slot = $application->scheduleSlot)
+                                            @if($slot)
+                                                <label class="form-check border rounded-3 px-3 py-2 mb-2">
+                                                    <input class="form-check-input me-2" type="checkbox" name="slot_ids[]" value="{{ $slot->id }}" {{ $order->allows_multiple_caregivers ? '' : 'checked' }} {{ $order->allows_multiple_caregivers ? '' : 'disabled' }}>
+                                                    <span class="form-check-label">
+                                                        {{ $slot->scheduled_date->format('d.m.Y') }} {{ substr($slot->starts_at, 0, 5) }}-{{ substr($slot->ends_at, 0, 5) }}
+                                                        @if($slot->label)
+                                                            <span class="text-secondary">• {{ $slot->label }}</span>
+                                                        @endif
+                                                    </span>
+                                                </label>
+                                                @if(! $order->allows_multiple_caregivers)
+                                                    <input type="hidden" name="slot_ids[]" value="{{ $slot->id }}">
+                                                @endif
+                                            @endif
+                                        @endforeach
+                                        <button class="btn btn-dark rounded-pill btn-sm mt-2">
+                                            {{ $order->allows_multiple_caregivers ? 'Подтвердить на выбранные смены' : 'Подтвердить сиделку и открыть чат' }}
+                                        </button>
+                                    </form>
+                                    <div class="d-flex gap-2 flex-wrap mt-2">
+                                        <form action="{{ route('client.orders.applicants.reserve', [$order, $caregiver]) }}" method="POST">
+                                            @csrf
+                                            <button class="btn btn-outline-dark rounded-pill btn-sm">Оставить в резерве</button>
+                                        </form>
+                                        <form action="{{ route('client.orders.applicants.decline', [$order, $caregiver]) }}" method="POST">
+                                            @csrf
+                                            <button class="btn btn-outline-danger rounded-pill btn-sm">Отклонить отклик</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+
             @if($order->matched_caregivers->isNotEmpty())
                 <div class="card-soft p-4">
                     <h2 class="h4 mb-3">{{ $order->allows_multiple_caregivers ? 'Подобрать сиделок по сменам' : 'Подходящие сиделки' }}</h2>
@@ -251,6 +373,7 @@
                         <div class="border rounded-4 p-3 mb-3">
                             <strong>{{ $caregiver->name }}</strong>
                             <div class="text-secondary">{{ $caregiver->caregiverProfile->experience_years }} лет опыта • от {{ number_format($caregiver->caregiverProfile->hourly_rate_from, 0, ',', ' ') }} ₽/час</div>
+                            <div class="small text-secondary mt-1">Совпадение: {{ $caregiver->match_score ?? 0 }} баллов • рейтинг {{ number_format((float) $caregiver->rating, 1, ',', ' ') }}</div>
                             <div class="mt-2 d-flex flex-wrap gap-2">
                                 @foreach($caregiver->matched_services as $matchedService)
                                     <span class="service-chip">{{ $matchedService }}</span>

@@ -80,7 +80,29 @@
                     @csrf
                     @if($selectedCaregiverProfile)
                         <input type="hidden" name="caregiver_profile_id" value="{{ $selectedCaregiverProfile->id }}">
+                        <input type="hidden" name="order_mode" value="direct">
                     @endif
+                    @unless($selectedCaregiverProfile)
+                        <div class="col-12">
+                            <label class="form-label d-block">Как оформить заказ</label>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="border rounded-4 p-3 d-block h-100">
+                                        <input class="form-check-input me-2" type="radio" name="order_mode" value="direct" @checked(old('order_mode') === 'direct')>
+                                        <span class="fw-semibold d-block mb-1">Выбрать сиделку самому</span>
+                                        <span class="text-secondary small">После сохранения вы перейдете в заказ и сможете отправить приглашение конкретной сиделке.</span>
+                                    </label>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="border rounded-4 p-3 d-block h-100">
+                                        <input class="form-check-input me-2" type="radio" name="order_mode" value="open" @checked(old('order_mode', 'open') === 'open')>
+                                        <span class="fw-semibold d-block mb-1">Опубликовать и получить отклики</span>
+                                        <span class="text-secondary small">Подходящие сиделки увидят заказ, откликнутся, а вы потом выберете исполнителя из списка откликов.</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    @endunless
 
                     <div class="col-md-8">
                         <label class="form-label">Название заказа</label>
@@ -178,6 +200,42 @@
                     <div class="col-12">
                         <label class="form-label">Особые требования</label>
                         <textarea name="special_requirements" class="form-control" rows="3">{{ old('special_requirements', $sourceOrder->special_requirements ?? '') }}</textarea>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="border rounded-4 p-4 bg-light">
+                            <h2 class="h5 mb-3">Карточка пациента</h2>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Диагноз / основной запрос</label>
+                                    <input type="text" name="patient_diagnosis" class="form-control" value="{{ old('patient_diagnosis', $sourceOrder->patientProfile->diagnosis ?? '') }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Экстренный контакт</label>
+                                    <input type="text" name="emergency_contact_name" class="form-control" value="{{ old('emergency_contact_name', $sourceOrder->patientProfile->emergency_contact_name ?? '') }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Телефон экстренного контакта</label>
+                                    <input type="text" name="emergency_contact_phone" class="form-control" value="{{ old('emergency_contact_phone', $sourceOrder->patientProfile->emergency_contact_phone ?? '') }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Особенности ухода</label>
+                                    <input type="text" name="patient_care_features" class="form-control" value="{{ old('patient_care_features', $sourceOrder->patientProfile->care_features ?? '') }}">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Ограничения</label>
+                                    <textarea name="patient_limitations" class="form-control" rows="3">{{ old('patient_limitations', $sourceOrder->patientProfile->limitations ?? '') }}</textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Режим дня</label>
+                                    <textarea name="patient_daily_routine" class="form-control" rows="3">{{ old('patient_daily_routine', $sourceOrder->patientProfile->daily_routine ?? '') }}</textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Лекарства</label>
+                                    <textarea name="patient_medications" class="form-control" rows="3">{{ old('patient_medications', $sourceOrder->patientProfile->medications ?? '') }}</textarea>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="col-12">

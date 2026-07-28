@@ -13,13 +13,13 @@ class CrmRequest extends Model
 
     public const STATUS_LABELS = [
         'new' => 'Новая',
-        'qualification' => 'Уточнение потребности',
-        'searching' => 'Подбор сиделки',
-        'caregiver_found' => 'Сиделка найдена',
-        'awaiting_client' => 'Ожидаем клиента',
-        'booked' => 'Заказ оформлен',
+        'qualification' => 'Квалификация',
+        'searching' => 'Ищем сиделку',
+        'caregiver_found' => 'Предложили сиделку',
+        'awaiting_client' => 'Согласование с клиентом',
+        'booked' => 'Согласовано',
         'active' => 'В работе',
-        'completed' => 'Завершена',
+        'completed' => 'Закрыта',
         'cancelled' => 'Отменена',
     ];
 
@@ -52,6 +52,7 @@ class CrmRequest extends Model
         'starts_at',
         'ends_at',
         'budget_per_hour',
+        'lead_cost',
         'notes',
         'next_contact_at',
         'last_contact_at',

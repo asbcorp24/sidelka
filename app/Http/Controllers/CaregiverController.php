@@ -90,8 +90,14 @@ class CaregiverController extends Controller
             ->whereHas('services', fn ($query) => $query->whereIn('services.id', $serviceIds))
             ->get()
             ->filter(fn (Order $order) => $this->matchesAvailability($profile, $order))
-            ->map(function (Order $order) use ($serviceIds) {
+            ->map(function (Order $order) use ($serviceIds, $user) {
                 $order->match_count = $order->services->pluck('id')->intersect($serviceIds)->count();
+                $order->my_application = OrderCaregiverAssignment::query()
+                    ->where('order_id', $order->id)
+                    ->where('caregiver_id', $user->id)
+                    ->whereIn('status', ['applied', 'invited', 'accepted', 'completed'])
+                    ->latest('id')
+                    ->first();
                 return $order;
             })
             ->values();
@@ -214,6 +220,52 @@ class CaregiverController extends Controller
         }
 
         return back()->with('status', 'Анкета сиделки обновлена.');
+    }
+
+    public function applyToOrder(Request $request, Order $order)
+    {
+        $user = $request->user();
+        abort_unless($user->isCaregiver() && $user->caregiverProfile, 404);
+        abort_unless($order->status === 'published', 404);
+
+        $order->loadMissing('services', 'scheduleSlots', 'caregiverAssignments', 'client');
+        abort_unless($this->matchesAvailability($user->caregiverProfile, $order), 422);
+
+        DB::transaction(function () use ($order, $user) {
+            $targetSlots = $order->scheduleSlots
+                ->filter(fn (OrderScheduleSlot $slot) => $this->slotMatchesAvailability($user->caregiverProfile, $slot))
+                ->filter(fn (OrderScheduleSlot $slot) => ! $order->caregiverAssignments
+                    ->whereIn('status', ['accepted', 'completed'])
+                    ->pluck('order_schedule_slot_id')
+                    ->contains($slot->id))
+                ->values();
+
+            abort_if($targetSlots->isEmpty(), 422);
+
+            foreach ($targetSlots as $slot) {
+                $order->caregiverAssignments()->updateOrCreate(
+                    [
+                        'order_schedule_slot_id' => $slot->id,
+                        'caregiver_id' => $user->id,
+                    ],
+                    [
+                        'status' => 'applied',
+                        'confirmed_at' => null,
+                        'completed_at' => null,
+                        'notes' => $slot->label,
+                    ]
+                );
+            }
+
+            $this->financeService->notify(
+                $order->client,
+                'order.application.new',
+                'Новый отклик на заказ',
+                "Сиделка {$user->name} откликнулась на заказ «{$order->title}».",
+            );
+        });
+
+        return redirect()->route('caregiver.dashboard')->with('status', 'Отклик отправлен клиенту.');
     }
 
     public function acceptOrder(Request $request, Order $order)
@@ -468,6 +520,7 @@ class CaregiverController extends Controller
             'services',
             'clinicPartnerServices.clinic',
             'scheduleSlots',
+            'patientProfile',
             'conversations.caregiver',
             'conversations.messages.sender',
             'expenses',
@@ -478,6 +531,7 @@ class CaregiverController extends Controller
             'reviews.author',
             'caregiverAssignments.caregiver',
             'caregiverAssignments.scheduleSlot',
+            'caregiverAssignments.report',
         ]);
     }
 
@@ -579,16 +633,23 @@ class CaregiverController extends Controller
             return true;
         }
 
-        return $order->scheduleSlots->every(function ($requiredSlot) use ($profile) {
-            return $profile->availabilitySlots->contains(function (AvailabilitySlot $slot) use ($requiredSlot) {
-                $dateMatches = $slot->specific_date
-                    ? $slot->specific_date->format('Y-m-d') === $requiredSlot->scheduled_date->format('Y-m-d')
-                    : (int) $slot->weekday === (int) $requiredSlot->scheduled_date->dayOfWeek;
+        return $order->scheduleSlots->every(fn ($requiredSlot) => $this->slotMatchesAvailability($profile, $requiredSlot));
+    }
 
-                return $dateMatches
-                    && substr($slot->starts_at, 0, 5) <= substr($requiredSlot->starts_at, 0, 5)
-                    && substr($slot->ends_at, 0, 5) >= substr($requiredSlot->ends_at, 0, 5);
-            });
+    private function slotMatchesAvailability($profile, OrderScheduleSlot $requiredSlot): bool
+    {
+        if ($profile->availabilitySlots->isEmpty()) {
+            return true;
+        }
+
+        return $profile->availabilitySlots->contains(function (AvailabilitySlot $slot) use ($requiredSlot) {
+            $dateMatches = $slot->specific_date
+                ? $slot->specific_date->format('Y-m-d') === $requiredSlot->scheduled_date->format('Y-m-d')
+                : (int) $slot->weekday === (int) $requiredSlot->scheduled_date->dayOfWeek;
+
+            return $dateMatches
+                && substr($slot->starts_at, 0, 5) <= substr($requiredSlot->starts_at, 0, 5)
+                && substr($slot->ends_at, 0, 5) >= substr($requiredSlot->ends_at, 0, 5);
         });
     }
 }

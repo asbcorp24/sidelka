@@ -26,6 +26,9 @@ return new class extends Migration
         });
 
         Schema::table('agent_commissions', function (Blueprint $table) {
+            // MySQL can bind the payment_id foreign key to the old unique index,
+            // so we create a standalone index first and only then replace it.
+            $table->index('payment_id', 'agent_commissions_payment_id_idx');
             $table->dropUnique('agent_commissions_payment_id_caregiver_id_unique');
             $table->foreignId('order_caregiver_assignment_id')
                 ->nullable()
@@ -45,6 +48,7 @@ return new class extends Migration
         Schema::table('agent_commissions', function (Blueprint $table) {
             $table->dropUnique('agent_commissions_payment_caregiver_assignment_unique');
             $table->dropConstrainedForeignId('order_caregiver_assignment_id');
+            $table->dropIndex('agent_commissions_payment_id_idx');
             $table->unique(['payment_id', 'caregiver_id']);
         });
 

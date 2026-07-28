@@ -66,6 +66,12 @@ class User extends Authenticatable implements MustVerifyEmail
     public function shiftActsAsCaregiver(): HasMany { return $this->hasMany(ShiftAct::class, 'caregiver_id'); }
     public function reportedIncidents(): HasMany { return $this->hasMany(SafetyIncident::class, 'reported_by_id'); }
     public function assignedIncidents(): HasMany { return $this->hasMany(SafetyIncident::class, 'assigned_to_id'); }
+    public function favoriteCaregivers(): HasMany { return $this->hasMany(CaregiverFavorite::class, 'client_id'); }
+    public function favoritedByClients(): HasMany { return $this->hasMany(CaregiverFavorite::class, 'caregiver_id'); }
+    public function patientProfiles(): HasMany { return $this->hasMany(PatientProfile::class, 'client_id'); }
+    public function sentReports(): HasMany { return $this->hasMany(UserReport::class, 'reporter_id'); }
+    public function receivedReports(): HasMany { return $this->hasMany(UserReport::class, 'reported_user_id'); }
+    public function shiftReports(): HasMany { return $this->hasMany(ShiftReport::class, 'caregiver_id'); }
 
     public function isCaregiver(): bool { return $this->role === 'caregiver'; }
     public function isClient(): bool { return $this->role === 'client'; }

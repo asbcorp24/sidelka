@@ -7,6 +7,7 @@ use App\Models\UserDocument;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class ContractController extends Controller
@@ -20,6 +21,8 @@ class ContractController extends Controller
             'user' => $user,
             'roleLabel' => 'сиделки',
             'contractPreviewRoute' => route('contracts.caregiver.preview'),
+            'documentTypeOptions' => UserDocument::caregiverDocumentOptions(),
+            'documentStatusLabels' => UserDocument::STATUS_LABELS,
         ]);
     }
 
@@ -32,6 +35,8 @@ class ContractController extends Controller
             'user' => $user,
             'roleLabel' => 'клиента',
             'contractPreviewRoute' => route('contracts.client.preview'),
+            'documentTypeOptions' => UserDocument::TYPE_LABELS,
+            'documentStatusLabels' => UserDocument::STATUS_LABELS,
         ]);
     }
 
@@ -79,15 +84,23 @@ class ContractController extends Controller
         $user = $request->user();
 
         $data = $request->validate([
-            'document_type' => ['required', 'string', 'max:255'],
-            'title' => ['required', 'string', 'max:255'],
+            'document_type' => ['required', 'string', 'max:255', Rule::in(array_keys(UserDocument::TYPE_LABELS))],
+            'title' => ['nullable', 'string', 'max:255'],
             'document_number' => ['nullable', 'string', 'max:255'],
             'scan' => ['nullable', 'file', 'mimes:pdf,jpg,jpeg,png,webp', 'max:8192'],
             'issued_at' => ['nullable', 'date'],
             'expires_at' => ['nullable', 'date'],
-            'verification_status' => ['nullable', 'string', 'max:255'],
+            'verification_status' => ['nullable', Rule::in(array_keys(UserDocument::STATUS_LABELS))],
             'notes' => ['nullable', 'string'],
         ]);
+
+        $typeOptions = $user->isCaregiver()
+            ? UserDocument::caregiverDocumentOptions()
+            : UserDocument::TYPE_LABELS;
+        $selectedType = $data['document_type'];
+        $selectedConfig = is_array($typeOptions[$selectedType] ?? null)
+            ? $typeOptions[$selectedType]
+            : ['label' => UserDocument::TYPE_LABELS[$selectedType] ?? $selectedType, 'required' => false, 'blocks_assignments' => false];
 
         $filePath = null;
         $originalName = null;
@@ -103,8 +116,8 @@ class ContractController extends Controller
         }
 
         $user->documents()->create([
-            'document_type' => $data['document_type'],
-            'title' => $data['title'],
+            'document_type' => $selectedType,
+            'title' => $data['title'] ?: ($selectedConfig['label'] ?? (UserDocument::TYPE_LABELS[$selectedType] ?? $selectedType)),
             'document_number' => $data['document_number'] ?? null,
             'file_path' => $filePath,
             'original_name' => $originalName,
@@ -112,7 +125,9 @@ class ContractController extends Controller
             'file_size' => $fileSize,
             'issued_at' => $data['issued_at'] ?? null,
             'expires_at' => $data['expires_at'] ?? null,
-            'verification_status' => $data['verification_status'] ?? 'uploaded',
+            'verification_status' => $data['verification_status'] ?? UserDocument::STATUS_UPLOADED,
+            'is_required' => (bool) ($selectedConfig['required'] ?? false),
+            'blocks_assignments' => $user->isCaregiver() ? (bool) ($selectedConfig['blocks_assignments'] ?? false) : false,
             'notes' => $data['notes'] ?? null,
         ]);
 

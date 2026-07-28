@@ -1,6 +1,8 @@
 @extends('layouts.app')
 
 @php($title = 'CRM — '.$person->name)
+@php($selectedCanIds = $person->caregiverProfile?->availableServices()->pluck('id')->all() ?? [])
+@php($selectedCannotIds = $person->caregiverProfile?->restrictedServices()->pluck('id')->all() ?? [])
 
 @section('content')
 <div class="container-fluid px-3 px-xl-5 py-4">
@@ -26,10 +28,107 @@
                 <div class="card-soft p-4 mb-4">
                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
                         <div>
+                            <h2 class="h4 mb-1">Анкета сиделки</h2>
+                            <div class="text-secondary small">CRM может дополнять и корректировать карточку вручную.</div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <span class="badge {{ $person->is_verified ? 'text-bg-success' : 'text-bg-warning' }}">{{ $person->is_verified ? 'Пользователь проверен' : 'Пользователь не проверен' }}</span>
+                            <span class="badge {{ $person->caregiverProfile?->documents_verified ? 'text-bg-success' : 'text-bg-warning' }}">{{ $person->caregiverProfile?->documents_verified ? 'Документы проверены' : 'Документы не проверены' }}</span>
+                        </div>
+                    </div>
+
+                    <form action="{{ route('crm.caregivers.profile.update', $person) }}" method="POST" class="row g-3">
+                        @csrf
+                        <div class="col-md-6">
+                            <label class="form-label">Имя</label>
+                            <input type="text" name="name" class="form-control" value="{{ old('name', $person->name) }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Телефон</label>
+                            <input type="text" name="phone" class="form-control" value="{{ old('phone', $person->phone) }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Email</label>
+                            <input type="email" name="email" class="form-control" value="{{ old('email', str_ends_with($person->email, '@sidelka.local') ? '' : $person->email) }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Город</label>
+                            <input type="text" name="city" class="form-control" value="{{ old('city', $person->city) }}">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Кратко о себе</label>
+                            <textarea name="about" class="form-control" rows="2">{{ old('about', $person->about) }}</textarea>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Опыт, лет</label>
+                            <input type="number" name="experience_years" class="form-control" value="{{ old('experience_years', $person->caregiverProfile?->experience_years ?? 0) }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Ставка от, ₽/час</label>
+                            <input type="number" name="hourly_rate_from" class="form-control" value="{{ old('hourly_rate_from', $person->caregiverProfile?->hourly_rate_from ?? 0) }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Смена от, ₽</label>
+                            <input type="number" name="shift_rate_from" class="form-control" value="{{ old('shift_rate_from', $person->caregiverProfile?->shift_rate_from ?? '') }}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Формат занятости</label>
+                            <input type="text" name="employment_format" class="form-control" value="{{ old('employment_format', $person->caregiverProfile?->employment_format ?? 'hourly') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Образование</label>
+                            <input type="text" name="education" class="form-control" value="{{ old('education', $person->caregiverProfile?->education ?? '') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Профильное описание</label>
+                            <input type="text" name="bio" class="form-control" value="{{ old('bio', $person->caregiverProfile?->bio ?? '') }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Медицинские навыки</label>
+                            <textarea name="medical_skills" class="form-control" rows="3">{{ old('medical_skills', $person->caregiverProfile?->medical_skills ?? '') }}</textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Бытовые навыки</label>
+                            <textarea name="household_skills" class="form-control" rows="3">{{ old('household_skills', $person->caregiverProfile?->household_skills ?? '') }}</textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label d-block">Может выполнять</label>
+                            <div class="border rounded-4 p-3" style="max-height: 260px; overflow:auto;">
+                                @foreach($services as $service)
+                                    <label class="form-check mb-1">
+                                        <input class="form-check-input" type="checkbox" name="can_service_ids[]" value="{{ $service->id }}" {{ in_array($service->id, old('can_service_ids', $selectedCanIds), true) ? 'checked' : '' }}>
+                                        <span class="form-check-label small">{{ $service->name }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label d-block">Не выполняет</label>
+                            <div class="border rounded-4 p-3" style="max-height: 260px; overflow:auto;">
+                                @foreach($services as $service)
+                                    <label class="form-check mb-1">
+                                        <input class="form-check-input" type="checkbox" name="cannot_service_ids[]" value="{{ $service->id }}" {{ in_array($service->id, old('cannot_service_ids', $selectedCannotIds), true) ? 'checked' : '' }}>
+                                        <span class="form-check-label small">{{ $service->name }}</span>
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+                        <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="ready_for_night" value="1" {{ old('ready_for_night', $person->caregiverProfile?->ready_for_night) ? 'checked' : '' }}><span class="form-check-label">Готова к ночным сменам</span></label></div>
+                        <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="ready_for_live_in" value="1" {{ old('ready_for_live_in', $person->caregiverProfile?->ready_for_live_in) ? 'checked' : '' }}><span class="form-check-label">Готова к проживанию</span></label></div>
+                        <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="documents_verified" value="1" {{ old('documents_verified', $person->caregiverProfile?->documents_verified) ? 'checked' : '' }}><span class="form-check-label">Документы проверены</span></label></div>
+                        <div class="col-md-3"><label class="form-check mt-4"><input class="form-check-input" type="checkbox" name="is_verified" value="1" {{ old('is_verified', $person->is_verified) ? 'checked' : '' }}><span class="form-check-label">Пользователь проверен</span></label></div>
+                        <div class="col-12">
+                            <button class="btn btn-dark rounded-pill px-4">Сохранить карточку сиделки</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div class="card-soft p-4 mb-4">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-3">
+                        <div>
                             <h2 class="h4 mb-1">Доступность сиделки</h2>
                             <div class="text-secondary small">Опыт: {{ $person->caregiverProfile?->experience_years ?? 0 }} лет • ставка от {{ number_format($person->caregiverProfile?->hourly_rate_from ?? 0, 0, ',', ' ') }} ₽/час</div>
                         </div>
-                        <span class="badge {{ $person->is_verified ? 'text-bg-success' : 'text-bg-warning' }}">{{ $person->is_verified ? 'Проверена' : 'Требует проверки' }}</span>
                     </div>
 
                     <form action="{{ route('crm.caregivers.availability.store', $person) }}" method="POST" class="row g-2 mb-4">
@@ -68,7 +167,7 @@
                             <form action="{{ route('crm.availability.destroy', $slot) }}" method="POST">@csrf @method('DELETE')<button class="btn btn-sm btn-outline-danger">Удалить</button></form>
                         </div>
                     @empty
-                        <p class="text-secondary">Свободные часы ещё не записаны.</p>
+                        <p class="text-secondary">Свободные часы еще не записаны.</p>
                     @endforelse
                 </div>
             @endif
@@ -151,7 +250,10 @@
                 <h2 class="h4 mb-3">Заказы платформы</h2>
                 @php($orders = $person->isCaregiver() ? $person->caregiverOrders : $person->clientOrders)
                 @forelse($orders as $order)
-                    <div class="border rounded-4 p-3 mb-2"><strong>#{{ $order->id }} {{ $order->title }}</strong><div class="small text-secondary">{{ $order->status_label }} • {{ $order->starts_at?->format('d.m.Y H:i') }}</div></div>
+                    <div class="border rounded-4 p-3 mb-2">
+                        <strong>#{{ $order->id }} {{ $order->title }}</strong>
+                        <div class="small text-secondary">{{ $order->status_label }} • {{ $order->starts_at?->format('d.m.Y H:i') }}</div>
+                    </div>
                 @empty
                     <p class="text-secondary mb-0">Заказов пока нет.</p>
                 @endforelse

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AgentCommission;
+use App\Models\CrmInteraction;
 use App\Models\CrmRequest;
 use App\Models\CrmTask;
 use App\Models\Order;
@@ -23,13 +24,28 @@ class ExecutiveAnalyticsController extends Controller
         $from = $request->filled('from') ? Carbon::parse($request->input('from'))->startOfDay() : now()->startOfMonth();
         $to = $request->filled('to') ? Carbon::parse($request->input('to'))->endOfDay() : now()->endOfDay();
 
-        $requests = CrmRequest::whereBetween('created_at', [$from, $to])->get();
+        $requests = CrmRequest::with(['responsible', 'order'])
+            ->whereBetween('created_at', [$from, $to])
+            ->get();
+
+        $orders = Order::query()
+            ->with(['client', 'payments', 'payouts', 'refunds'])
+            ->whereBetween('created_at', [$from, $to])
+            ->get();
+
         $converted = $requests->whereNotNull('order_id');
-        $conversion = $requests->count() > 0 ? round($converted->count() * 100 / $requests->count(), 1) : 0;
+        $conversion = $requests->count() > 0 ? round($converted->count() * 100 / $requests->count(), 1) : 0.0;
         $averageConversionHours = $converted->avg(function (CrmRequest $crmRequest) {
             $order = $crmRequest->order;
             return $order ? $crmRequest->created_at->diffInMinutes($order->created_at) / 60 : null;
         });
+
+        $leadSpend = (int) $requests->sum(fn (CrmRequest $crmRequest) => (int) ($crmRequest->lead_cost ?? 0));
+        $costPerLead = $requests->count() > 0 ? round($leadSpend / $requests->count(), 1) : 0;
+        $costPerOrder = $converted->count() > 0 ? round($leadSpend / $converted->count(), 1) : 0;
+        $averageCheck = $orders->whereNotIn('status', ['cancelled'])->avg(fn (Order $order) => (float) $order->total_invoice_amount);
+        $repeatClients = $orders->groupBy('client_id')->filter(fn ($group) => $group->count() > 1)->count();
+        $cancellations = $orders->where('status', 'cancelled')->count();
 
         $days = collect();
         for ($date = $from->copy(); $date->lte($to); $date->addDay()) {
@@ -37,18 +53,38 @@ class ExecutiveAnalyticsController extends Controller
             $days->push([
                 'date' => $date->format('d.m'),
                 'requests' => $requests->filter(fn ($item) => $item->created_at->format('Y-m-d') === $key)->count(),
-                'orders' => Order::whereDate('created_at', $key)->count(),
+                'orders' => $orders->filter(fn ($item) => $item->created_at->format('Y-m-d') === $key)->count(),
                 'shifts' => OrderCaregiverAssignment::whereDate('completed_at', $key)->count(),
             ]);
         }
 
-        $staffWorkload = User::where('role', 'crm')->where('staff_active', true)->get()->map(function (User $user) {
+        $staffWorkload = User::where('role', 'crm')->where('staff_active', true)->get()->map(function (User $user) use ($from, $to) {
+            $userRequests = CrmRequest::where('responsible_user_id', $user->id)
+                ->whereBetween('created_at', [$from, $to])
+                ->get();
+
+            $firstResponseMinutes = $userRequests->map(function (CrmRequest $crmRequest) {
+                $firstInteraction = CrmInteraction::query()
+                    ->where('crm_request_id', $crmRequest->id)
+                    ->whereNotNull('employee_id')
+                    ->where('happened_at', '>=', $crmRequest->created_at)
+                    ->orderBy('happened_at')
+                    ->first();
+
+                return $firstInteraction ? $crmRequest->created_at->diffInMinutes($firstInteraction->happened_at) : null;
+            })->filter();
+
+            $convertedCount = $userRequests->whereNotNull('order_id')->count();
+
             return [
                 'name' => $user->name,
                 'role' => $user->staffRoleLabel(),
                 'open_tasks' => CrmTask::where('assigned_to_id', $user->id)->where('status', 'open')->count(),
                 'overdue_tasks' => CrmTask::where('assigned_to_id', $user->id)->where('status', 'open')->where('due_at', '<', now())->count(),
                 'requests' => CrmRequest::where('responsible_user_id', $user->id)->whereNotIn('status', ['completed', 'cancelled'])->count(),
+                'conversion_percent' => $userRequests->count() > 0 ? round($convertedCount * 100 / $userRequests->count(), 1) : 0,
+                'first_response_minutes' => $firstResponseMinutes->isNotEmpty() ? round($firstResponseMinutes->avg(), 1) : null,
+                'sla_overdue' => CrmTask::where('assigned_to_id', $user->id)->where('status', 'open')->where('category', 'follow_up')->where('due_at', '<', now())->count(),
             ];
         })->sortByDesc('open_tasks')->values();
 
@@ -60,6 +96,12 @@ class ExecutiveAnalyticsController extends Controller
                 'converted_orders' => $converted->count(),
                 'conversion_percent' => $conversion,
                 'average_conversion_hours' => round((float) ($averageConversionHours ?? 0), 1),
+                'lead_spend' => $leadSpend,
+                'cost_per_lead' => $costPerLead,
+                'cost_per_order' => $costPerOrder,
+                'average_check' => round((float) ($averageCheck ?? 0), 0),
+                'repeat_clients' => $repeatClients,
+                'cancellations' => $cancellations,
                 'active_orders' => Order::where('status', 'in_progress')->count(),
                 'completed_shifts' => OrderCaregiverAssignment::whereBetween('completed_at', [$from, $to])->count(),
                 'pending_payouts' => Payout::whereIn('status', ['pending', 'processing'])->sum('amount'),

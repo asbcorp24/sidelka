@@ -6,6 +6,7 @@ use App\Models\LegalContract;
 use App\Models\Order;
 use App\Models\OrderScheduleSlot;
 use App\Models\User;
+use App\Support\PlatformSettings;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +16,10 @@ use Illuminate\Validation\ValidationException;
 
 class LegalContractService
 {
+    public function __construct(private PlatformSettings $platformSettings)
+    {
+    }
+
     public function createFramework(User $user, User $actor): LegalContract
     {
         abort_unless(in_array($user->role, ['client', 'caregiver'], true), 422);
@@ -63,10 +68,10 @@ class LegalContractService
         $number = sprintf('%s-%d-%s-V%d', $prefix, $user->id, now()->format('Ymd'), $version);
         $title = $user->isClient()
             ? 'Агентский договор с заказчиком'
-            : 'Партнёрский агентский договор с сиделкой';
+            : 'Партнерский агентский договор с сиделкой';
 
         $data = [
-            'company' => config('legal.company'),
+            'company' => $this->companySettings(),
             'user' => $user->loadMissing('contractProfile'),
             'profile' => $user->contractProfile,
             'number' => $number,
@@ -184,7 +189,7 @@ class LegalContractService
             $caregiverAmount = max(0, $serviceAmount - $commissionAmount);
 
             $body = View::make('contracts.templates.order-service-agent', [
-                'company' => config('legal.company'),
+                'company' => $this->companySettings(),
                 'order' => $order,
                 'client' => $order->client,
                 'clientProfile' => $order->client->contractProfile,
@@ -270,11 +275,11 @@ class LegalContractService
                         'user_id' => null,
                         'method' => 'platform_offer',
                         'channel' => 'system',
-                        'destination' => config('legal.company.email'),
+                        'destination' => $this->companySettings()['email'] ?: null,
                         'document_hash' => $hash,
                         'signed_at' => now(),
                         'evidence' => [
-                            'company' => config('legal.company'),
+                            'company' => $this->companySettings(),
                             'offer_published_by' => $actor->id,
                         ],
                     ]);
@@ -291,9 +296,14 @@ class LegalContractService
         });
     }
 
+    private function companySettings(): array
+    {
+        return $this->platformSettings->legalPayload();
+    }
+
     private function platformParty(): array
     {
-        $company = config('legal.company');
+        $company = $this->companySettings();
 
         return [
             'user_id' => null,
@@ -321,23 +331,23 @@ class LegalContractService
 
     private function assertCompanyConfigured(): void
     {
-        $company = config('legal.company');
+        $company = $this->companySettings();
         $required = [
-            'name' => 'LEGAL_COMPANY_NAME',
-            'inn' => 'LEGAL_COMPANY_INN',
-            'ogrn' => 'LEGAL_COMPANY_OGRN',
-            'address' => 'LEGAL_COMPANY_ADDRESS',
-            'signatory_name' => 'LEGAL_COMPANY_SIGNATORY_NAME',
+            'name' => 'наименование компании',
+            'inn' => 'ИНН',
+            'ogrn' => 'ОГРН',
+            'address' => 'юридический адрес',
+            'signatory_name' => 'подписант',
         ];
 
         $missing = collect($required)
-            ->filter(fn ($env, $field) => empty($company[$field]))
+            ->filter(fn ($label, $field) => empty($company[$field]))
             ->values()
             ->all();
 
         if ($missing !== []) {
             throw ValidationException::withMessages([
-                'contract' => 'Не заполнены реквизиты площадки в .env: ' . implode(', ', $missing) . '.',
+                'contract' => 'Не заполнены реквизиты площадки в админке: ' . implode(', ', $missing) . '.',
             ]);
         }
     }

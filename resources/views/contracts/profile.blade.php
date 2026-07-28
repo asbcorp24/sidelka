@@ -47,7 +47,7 @@
         <div class="col-lg-8">
             <div class="card-soft p-4 mb-4">
                 <h2 class="h4 mb-3">Рамочный агентский договор</h2>
-                <p class="text-secondary">Площадка организует подбор, документы и расчеты, но услуги ухода оказывает независимая сиделка. Конкретный договор по заказу заключается напрямую между заказчиком и сиделкой.</p>
+                <p class="text-secondary">Площадка организует подбор, документы и расчеты. Конкретный договор по заказу оформляется отдельно по фактической сделке.</p>
                 @if($frameworkContract)
                     <div class="border rounded-4 p-3">
                         <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
@@ -59,14 +59,13 @@
                                 {{ $frameworkContract->status === 'signed' ? 'Подписан' : 'Ожидает подписи' }}
                             </span>
                         </div>
-                        <a href="{{ route('legal.contracts.show', $frameworkContract) }}" class="btn btn-outline-dark rounded-pill mt-3">Просмотреть и подписать</a>
+                        <a href="{{ route('legal.contracts.show', $frameworkContract) }}" class="btn btn-outline-dark rounded-pill mt-3">Просмотреть договор</a>
                     </div>
                 @else
                     <form action="{{ route('legal.framework.create') }}" method="POST">
                         @csrf
                         <button class="btn btn-dark rounded-pill px-4">Сформировать агентский договор</button>
                     </form>
-                    <div class="small text-secondary mt-2">Перед формированием заполните ФИО, паспорт, адрес и контактные данные. Для сиделки также нужны ИНН и налоговый статус.</div>
                 @endif
             </div>
 
@@ -157,7 +156,7 @@
                     <div class="col-12">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" name="is_self_employed" value="1" {{ old('is_self_employed', $contract->is_self_employed ?? false) ? 'checked' : '' }}>
-                            <label class="form-check-label">Самозанятый / работа по специальному налоговому режиму</label>
+                            <label class="form-check-label">Самозанятый / специальный налоговый режим</label>
                         </div>
                     </div>
                     <div class="col-12">
@@ -173,27 +172,85 @@
 
         <div class="col-lg-4">
             <div class="card-soft p-4 mb-4">
-                <h2 class="h4 mb-3">Документы</h2>
+                <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+                    <div>
+                        <h2 class="h4 mb-1">Документы</h2>
+                        <div class="small text-secondary">Тип документа теперь выбирается из списка, а не вводится вручную.</div>
+                    </div>
+                    <span class="badge text-bg-light">{{ $user->documents->count() }} шт.</span>
+                </div>
+
                 <form action="{{ route('contracts.document.store') }}" method="POST" enctype="multipart/form-data" class="row g-3 mb-4">
                     @csrf
-                    <div class="col-12"><input type="text" name="document_type" class="form-control" placeholder="Тип документа"></div>
-                    <div class="col-12"><input type="text" name="title" class="form-control" placeholder="Название документа"></div>
-                    <div class="col-12"><input type="text" name="document_number" class="form-control" placeholder="Номер"></div>
-                    <div class="col-12"><input type="file" name="scan" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.webp"></div>
-                    <div class="col-md-6"><input type="date" name="issued_at" class="form-control"></div>
-                    <div class="col-md-6"><input type="date" name="expires_at" class="form-control"></div>
-                    <div class="col-12"><input type="text" name="verification_status" class="form-control" placeholder="Статус проверки"></div>
-                    <div class="col-12"><textarea name="notes" class="form-control" rows="2" placeholder="Комментарий"></textarea></div>
-                    <div class="col-12"><button class="btn btn-outline-dark rounded-pill px-4">Добавить документ</button></div>
+                    <div class="col-12">
+                        <label class="form-label">Тип документа</label>
+                        <select name="document_type" class="form-select" required>
+                            <option value="">Выберите тип документа</option>
+                            @foreach($documentTypeOptions as $key => $option)
+                                @php($label = is_array($option) ? $option['label'] : $option)
+                                <option value="{{ $key }}" {{ old('document_type') === $key ? 'selected' : '' }}>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Название</label>
+                        <input type="text" name="title" class="form-control" value="{{ old('title') }}" placeholder="Можно оставить пустым, подставится автоматически">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Номер документа</label>
+                        <input type="text" name="document_number" class="form-control" value="{{ old('document_number') }}">
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Скан / файл</label>
+                        <input type="file" name="scan" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.webp">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Дата выдачи</label>
+                        <input type="date" name="issued_at" class="form-control" value="{{ old('issued_at') }}">
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Срок действия</label>
+                        <input type="date" name="expires_at" class="form-control" value="{{ old('expires_at') }}">
+                    </div>
+                    <div class="col-12">
+                        <input type="hidden" name="verification_status" value="{{ \App\Models\UserDocument::STATUS_UPLOADED }}">
+                        <label class="form-label">Комментарий</label>
+                        <textarea name="notes" class="form-control" rows="2" placeholder="Например: новый паспорт, продленная медкнижка, реквизиты для выплат">{{ old('notes') }}</textarea>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-outline-dark rounded-pill px-4">Добавить документ</button>
+                    </div>
                 </form>
 
-                @forelse($user->documents as $document)
+                @forelse($user->documents->sortByDesc('created_at') as $document)
                     <div class="border rounded-4 p-3 mb-3">
-                        <strong>{{ $document->title }}</strong>
-                        <div class="text-secondary small">{{ $document->document_type }} • {{ $document->verification_status }}</div>
-                        @if($document->document_number)
-                            <div class="small">№ {{ $document->document_number }}</div>
+                        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+                            <div>
+                                <strong>{{ $document->title ?: $document->type_label }}</strong>
+                                <div class="text-secondary small">{{ $document->type_label }} @if($document->document_number) • № {{ $document->document_number }} @endif</div>
+                            </div>
+                            <span class="badge {{ $document->verification_status === \App\Models\UserDocument::STATUS_VERIFIED ? 'text-bg-success' : ($document->verification_status === \App\Models\UserDocument::STATUS_REJECTED ? 'text-bg-danger' : 'text-bg-warning') }}">
+                                {{ $document->status_label }}
+                            </span>
+                        </div>
+                        <div class="small text-secondary mt-2">
+                            Выдан: {{ $document->issued_at?->format('d.m.Y') ?: 'не указано' }}
+                            • Срок: {{ $document->expires_at?->format('d.m.Y') ?: 'бессрочно' }}
+                        </div>
+                        @if($document->notes)
+                            <div class="small mt-2">{{ $document->notes }}</div>
                         @endif
+                        <div class="d-flex gap-2 flex-wrap mt-3">
+                            @if($document->file_path)
+                                <a href="{{ route('contracts.document.download', $document) }}" class="btn btn-sm btn-outline-dark rounded-pill">Открыть файл</a>
+                            @endif
+                            @if($document->is_required)
+                                <span class="badge text-bg-light">Обязательный</span>
+                            @endif
+                            @if($document->blocks_assignments)
+                                <span class="badge text-bg-warning">Блокирует новые смены</span>
+                            @endif
+                        </div>
                     </div>
                 @empty
                     <p class="text-secondary mb-0">Документы пока не добавлены.</p>
@@ -203,11 +260,10 @@
             <div class="card-soft p-4">
                 <h2 class="h4 mb-3">Как подписывается</h2>
                 <ol class="mb-0 ps-3">
-                    <li>система формирует неизменяемую версию;</li>
-                    <li>вы читаете полный текст;</li>
-                    <li>код приходит на телефон или email;</li>
-                    <li>код связывается с хешем документа;</li>
-                    <li>PDF и протокол остаются в кабинете.</li>
+                    <li>Система формирует неизменяемую версию договора.</li>
+                    <li>Вы проверяете текст и реквизиты.</li>
+                    <li>Подтверждение связывается с конкретной версией документа.</li>
+                    <li>PDF и история остаются в личном кабинете.</li>
                 </ol>
             </div>
         </div>

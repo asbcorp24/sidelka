@@ -3,26 +3,31 @@
 namespace App\Services;
 
 use App\Models\WalletTopUp;
+use App\Support\PlatformSettings;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class SberAcquiringService
 {
+    public function __construct(private PlatformSettings $platformSettings)
+    {
+    }
+
     public function register(WalletTopUp $topUp): array
     {
-        $this->assertConfigured();
+        $settings = $this->bankSettings();
 
         $response = $this->client()->post($this->endpoint('register.do'), [
-            'userName' => config('sber.username'),
-            'password' => config('sber.password'),
+            'userName' => $settings['username'],
+            'password' => $settings['password'],
             'orderNumber' => $topUp->order_number,
             'amount' => $topUp->amount_minor,
             'currency' => '643',
             'returnUrl' => route('payments.sber.return', $topUp),
             'failUrl' => route('payments.sber.fail', $topUp),
             'dynamicCallbackUrl' => route('payments.sber.callback'),
-            'description' => config('sber.description_prefix') . ' #' . $topUp->order_number,
+            'description' => $settings['description_prefix'] . ' #' . $topUp->order_number,
             'language' => 'ru',
         ]);
 
@@ -33,7 +38,7 @@ class SberAcquiringService
 
     public function status(WalletTopUp $topUp): array
     {
-        $this->assertConfigured();
+        $settings = $this->bankSettings();
 
         $identity = $topUp->provider_order_id
             ? ['orderId' => $topUp->provider_order_id]
@@ -42,8 +47,8 @@ class SberAcquiringService
         $response = $this->client()->post(
             $this->endpoint('getOrderStatusExtended.do'),
             array_merge([
-                'userName' => config('sber.username'),
-                'password' => config('sber.password'),
+                'userName' => $settings['username'],
+                'password' => $settings['password'],
                 'language' => 'ru',
             ], $identity)
         );
@@ -66,24 +71,32 @@ class SberAcquiringService
 
     private function client(): PendingRequest
     {
+        $settings = $this->bankSettings();
+
         return Http::asJson()
             ->acceptJson()
-            ->timeout((int) config('sber.timeout', 20));
+            ->timeout((int) $settings['timeout']);
     }
 
     private function endpoint(string $method): string
     {
-        return rtrim((string) config('sber.base_url'), '/') . '/' . ltrim($method, '/');
+        $settings = $this->bankSettings();
+
+        return rtrim((string) $settings['base_url'], '/') . '/' . ltrim($method, '/');
     }
 
-    private function assertConfigured(): void
+    private function bankSettings(): array
     {
-        if (! config('sber.enabled')) {
-            throw new RuntimeException('Интернет-эквайринг Сбера отключён.');
+        $settings = $this->platformSettings->bankPayload();
+
+        if (! $settings['enabled']) {
+            throw new RuntimeException('Интернет-эквайринг Сбера отключен.');
         }
 
-        if (! config('sber.username') || ! config('sber.password')) {
-            throw new RuntimeException('Не заданы тестовые реквизиты интернет-эквайринга Сбера.');
+        if (! $settings['username'] || ! $settings['password']) {
+            throw new RuntimeException('Не заданы реквизиты интернет-эквайринга Сбера.');
         }
+
+        return $settings;
     }
 }

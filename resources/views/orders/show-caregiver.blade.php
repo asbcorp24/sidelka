@@ -23,6 +23,7 @@
         <div class="col-lg-8">
             <div class="card-soft p-4 mb-4">
                 <p>{{ $order->description }}</p>
+
                 <div class="d-flex flex-wrap gap-2 mb-3">
                     @foreach($order->services as $service)
                         <span class="service-chip">{{ $service->name }}</span>
@@ -164,6 +165,78 @@
                 </div>
             @endif
 
+            @if($order->patientProfile)
+                <div class="card-soft p-4 mb-4">
+                    <h2 class="h4 mb-3">Карточка пациента</h2>
+                    <div class="row g-3 small">
+                        @if($order->patientProfile->diagnosis)
+                            <div class="col-md-6"><strong>Диагноз:</strong><br>{{ $order->patientProfile->diagnosis }}</div>
+                        @endif
+                        @if($order->patientProfile->limitations)
+                            <div class="col-md-6"><strong>Ограничения:</strong><br>{{ $order->patientProfile->limitations }}</div>
+                        @endif
+                        @if($order->patientProfile->daily_routine)
+                            <div class="col-md-6"><strong>Режим дня:</strong><br>{{ $order->patientProfile->daily_routine }}</div>
+                        @endif
+                        @if($order->patientProfile->medications)
+                            <div class="col-md-6"><strong>Лекарства:</strong><br>{{ $order->patientProfile->medications }}</div>
+                        @endif
+                        @if($order->patientProfile->care_features)
+                            <div class="col-md-6"><strong>Особенности ухода:</strong><br>{{ $order->patientProfile->care_features }}</div>
+                        @endif
+                        @if($order->patientProfile->emergency_contact_name || $order->patientProfile->emergency_contact_phone)
+                            <div class="col-md-6"><strong>Экстренный контакт:</strong><br>{{ $order->patientProfile->emergency_contact_name }}{{ $order->patientProfile->emergency_contact_phone ? ' • '.$order->patientProfile->emergency_contact_phone : '' }}</div>
+                        @endif
+                    </div>
+                </div>
+            @endif
+
+            @if(in_array($order->status, ['in_chat', 'in_progress'], true) && $order->my_assignments->isNotEmpty())
+                <div class="card-soft p-4 mb-4">
+                    <h2 class="h4 mb-3">Отчет по смене</h2>
+                    @foreach($order->my_assignments as $assignment)
+                        <form action="{{ route('caregiver.assignments.report.store', [$order, $assignment]) }}" method="POST" class="border rounded-4 p-3 mb-3">
+                            @csrf
+                            <div class="small text-secondary mb-2">
+                                @if($assignment->scheduleSlot)
+                                    Смена {{ $assignment->scheduleSlot->scheduled_date->format('d.m.Y') }} {{ substr($assignment->scheduleSlot->starts_at, 0, 5) }}-{{ substr($assignment->scheduleSlot->ends_at, 0, 5) }}
+                                @endif
+                            </div>
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label">Краткий итог</label>
+                                    <textarea name="summary" class="form-control" rows="2">{{ $assignment->report->summary ?? '' }}</textarea>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label d-block">Чек-лист смены</label>
+                                    @foreach(['Утренний уход', 'Дневной уход', 'Вечерний уход', 'Лекарства выданы', 'Питание проконтролировано', 'Прогулка/перемещение', 'Уборка и гигиена'] as $task)
+                                        <label class="form-check mb-1">
+                                            <input class="form-check-input" type="checkbox" name="completed_tasks[]" value="{{ $task }}" {{ in_array($task, $assignment->report->completed_tasks ?? [], true) ? 'checked' : '' }}>
+                                            <span class="form-check-label">{{ $task }}</span>
+                                        </label>
+                                    @endforeach
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Покупки и расходники</label>
+                                    <textarea name="purchased_items_text" class="form-control" rows="2">{{ isset($assignment->report) ? implode("\n", $assignment->report->purchased_items ?? []) : '' }}</textarea>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Изменения состояния</label>
+                                    <textarea name="health_changes" class="form-control" rows="2">{{ $assignment->report->health_changes ?? '' }}</textarea>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Ссылки на фото</label>
+                                    <textarea name="photo_links_text" class="form-control" rows="2">{{ isset($assignment->report) ? implode("\n", $assignment->report->photo_paths ?? []) : '' }}</textarea>
+                                </div>
+                                <div class="col-12">
+                                    <button class="btn btn-outline-dark rounded-pill">Сохранить отчет по смене</button>
+                                </div>
+                            </div>
+                        </form>
+                    @endforeach
+                </div>
+            @endif
+
             @if(in_array($order->status, ['in_chat', 'in_progress'], true))
                 <div class="card-soft p-4 mb-4">
                     <h2 class="h4 mb-3">Добавить покупку или допуслугу</h2>
@@ -235,6 +308,29 @@
                         <button class="btn btn-outline-danger w-100 rounded-pill">Отменить заказ</button>
                     </form>
                 @endif
+            </div>
+
+            <div class="card-soft p-4 mb-4">
+                <h2 class="h4 mb-3">Жалоба на клиента</h2>
+                <form action="{{ route('orders.report.store', $order) }}" method="POST" class="row g-3">
+                    @csrf
+                    <input type="hidden" name="reported_user_id" value="{{ $order->client_id }}">
+                    <div class="col-12">
+                        <select name="kind" class="form-select" required>
+                            <option value="complaint">Жалоба</option>
+                            <option value="blacklist">Добавить клиента в черный список</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <input type="text" name="reason" class="form-control" placeholder="Коротко: в чем проблема" required>
+                    </div>
+                    <div class="col-12">
+                        <textarea name="details" class="form-control" rows="3" placeholder="Подробности для CRM качества"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-outline-danger rounded-pill w-100">Отправить жалобу</button>
+                    </div>
+                </form>
             </div>
 
             @if($order->payouts->isNotEmpty())

@@ -25,7 +25,7 @@
                 <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
                     <div>
                         <h2 class="h4 mb-2">Заказы</h2>
-                        <p class="text-secondary mb-0">Новые заявки создаются на отдельной странице. По каждому заказу есть отдельная карточка с чатом, счетом, клиниками, расходами и статусами.</p>
+                        <p class="text-secondary mb-0">Новые заявки создаются на отдельной странице. У каждого заказа есть своя карточка с расписанием, чатом, оплатой, клиниками, расходами и статусами.</p>
                     </div>
                     <div class="d-flex gap-2 flex-wrap">
                         <a href="{{ route('client.orders.create') }}" class="btn btn-dark rounded-pill">Новый заказ</a>
@@ -143,6 +143,39 @@
             </div>
 
             <div class="card-soft p-4 mb-4">
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <h2 class="h4 mb-0">Избранные сиделки</h2>
+                    <span class="text-secondary small">{{ $favoriteCaregivers->count() }}</span>
+                </div>
+                @forelse($favoriteCaregivers as $favorite)
+                    @if($favorite->caregiver && $favorite->caregiver->caregiverProfile)
+                        <div class="border rounded-4 p-3 mb-3">
+                            <div class="d-flex justify-content-between align-items-start gap-2">
+                                <div>
+                                    <strong>{{ $favorite->caregiver->name }}</strong>
+                                    <div class="small text-secondary">
+                                        {{ $favorite->caregiver->city ?: 'Город не указан' }}
+                                        • от {{ number_format($favorite->caregiver->caregiverProfile->hourly_rate_from, 0, ',', ' ') }} ₽/час
+                                    </div>
+                                </div>
+                                <span class="badge text-bg-light">Рейтинг {{ number_format((float) $favorite->caregiver->rating, 1, ',', ' ') }}</span>
+                            </div>
+                            <div class="d-flex gap-2 flex-wrap mt-3">
+                                <a href="{{ route('caregivers.show', $favorite->caregiver->caregiverProfile) }}" class="btn btn-outline-dark rounded-pill btn-sm">Открыть анкету</a>
+                                <form action="{{ route('client.favorites.destroy', $favorite->caregiver->caregiverProfile) }}" method="POST">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button class="btn btn-outline-danger rounded-pill btn-sm">Убрать</button>
+                                </form>
+                            </div>
+                        </div>
+                    @endif
+                @empty
+                    <p class="text-secondary mb-0">Пока нет избранных сиделок. Добавляйте их из каталога и карточек анкет.</p>
+                @endforelse
+            </div>
+
+            <div class="card-soft p-4 mb-4">
                 <h2 class="h4 mb-3">Семейный доступ</h2>
                 <form action="{{ route('client.family.store') }}" method="POST" class="row g-3 mb-4">
                     @csrf
@@ -163,6 +196,7 @@
                     <div class="col-12"><textarea name="notes" class="form-control" rows="2" placeholder="Примечание"></textarea></div>
                     <div class="col-12"><button class="btn btn-outline-dark rounded-pill px-4">Добавить родственника</button></div>
                 </form>
+
                 @foreach($familyMembers as $familyMember)
                     <div class="border rounded-4 p-3 mb-3">
                         <strong>{{ $familyMember->name }}</strong>

@@ -11,6 +11,7 @@ class DatabaseSeeder extends Seeder
         $this->call([
             MarketplaceSeeder::class,
             LegalProfilesSeeder::class,
+            CrmTemplatesSeeder::class,
             MarkSeededEmailsVerifiedSeeder::class,
         ]);
     }
