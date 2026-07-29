@@ -43,31 +43,46 @@ class CaregiverDocumentService
 
         $assignee = $this->resolveReviewer();
         $priority = $document->is_required ? 'high' : 'normal';
+        $dedupKey = 'document-review:' . $document->id;
+        $task = CrmTask::where('dedup_key', $dedupKey)->first();
+        $newAssignment = false;
 
-        $task = CrmTask::firstOrCreate([
-            'dedup_key' => 'document-review:' . $document->id,
-        ], [
-            'person_user_id' => $document->user_id,
-            'assigned_to_id' => $assignee?->id,
-            'created_by_id' => null,
-            'title' => 'Проверить документ сиделки: ' . $document->title,
-            'description' => 'Сиделка: ' . $document->user->name
-                . '. Откройте скан, проверьте реквизиты, срок действия и примите решение.',
-            'category' => 'caregiver_document',
-            'source_type' => UserDocument::class,
-            'source_id' => $document->id,
-            'status' => 'open',
-            'priority' => $priority,
-            'due_at' => now()->addDay(),
-        ]);
+        if (! $task) {
+            $task = CrmTask::create([
+                'dedup_key' => $dedupKey,
+                'person_user_id' => $document->user_id,
+                'assigned_to_id' => $assignee?->id,
+                'created_by_id' => null,
+                'title' => 'Проверить документ сиделки: ' . $document->title,
+                'description' => 'Сиделка: ' . $document->user->name
+                    . '. Откройте скан, проверьте реквизиты, срок действия и примите решение.',
+                'category' => 'caregiver_document',
+                'source_type' => UserDocument::class,
+                'source_id' => $document->id,
+                'status' => 'open',
+                'priority' => $priority,
+                'due_at' => now()->addDay(),
+            ]);
+            $newAssignment = true;
+        } elseif ($task->status !== 'open' || ! $task->assigned_to_id) {
+            $task->update([
+                'assigned_to_id' => $task->assigned_to_id ?: $assignee?->id,
+                'status' => 'open',
+                'priority' => $priority,
+                'due_at' => now()->addDay(),
+                'completed_at' => null,
+            ]);
+            $newAssignment = true;
+        }
 
         if ($document->verification_status === UserDocument::STATUS_UPLOADED) {
             $document->update(['verification_status' => UserDocument::STATUS_PENDING]);
         }
 
-        if ($task->wasRecentlyCreated && $assignee) {
+        $assignedUser = $task->assignedTo()->first() ?: $assignee;
+        if ($newAssignment && $assignedUser) {
             $this->notifyAssignee(
-                $assignee,
+                $assignedUser,
                 'document.review_assigned',
                 'Назначена проверка документа',
                 'Сиделка ' . $document->user->name . ' загрузила документ «' . $document->title . '».',
