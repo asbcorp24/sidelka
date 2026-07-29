@@ -59,7 +59,17 @@
                             <div class="small text-success mt-1"><strong>Подтвердил:</strong> {{ $document->verifiedBy->name }} · {{ $document->verified_at?->format('d.m.Y H:i') }}</div>
                         @endif
                         @if($document->file_path)
-                            <a href="{{ route('contracts.document.download', $document) }}" class="btn btn-sm btn-outline-dark rounded-pill mt-2">Открыть скан</a>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-outline-dark rounded-pill mt-2 js-document-preview"
+                                data-bs-toggle="modal"
+                                data-bs-target="#documentPreviewModal"
+                                data-preview-url="{{ route('contracts.document.preview', $document) }}"
+                                data-download-url="{{ route('contracts.document.download', $document) }}"
+                                data-document-title="{{ $document->user?->name }} — {{ $document->title ?: $document->type_label }}"
+                            >
+                                Открыть скан
+                            </button>
                         @else
                             <span class="badge text-bg-secondary mt-2">Файл не загружен</span>
                         @endif
@@ -109,4 +119,73 @@
         {{ $documents->links() }}
     </div>
 </div>
+
+<div class="modal fade" id="documentPreviewModal" tabindex="-1" aria-labelledby="documentPreviewTitle" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content border-0 rounded-4 overflow-hidden">
+            <div class="modal-header">
+                <div>
+                    <div class="small text-secondary">Просмотр скана</div>
+                    <h5 class="modal-title" id="documentPreviewTitle">Документ</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body p-0 bg-light position-relative">
+                <div id="documentPreviewLoading" class="position-absolute top-50 start-50 translate-middle text-center">
+                    <div class="spinner-border" role="status" aria-hidden="true"></div>
+                    <div class="small text-secondary mt-2">Загрузка скана…</div>
+                </div>
+                <iframe
+                    id="documentPreviewFrame"
+                    title="Предпросмотр документа"
+                    class="w-100 d-block"
+                    style="height:78vh; min-height:520px; border:0; background:#f8f9fa;"
+                    src="about:blank"
+                ></iframe>
+            </div>
+            <div class="modal-footer">
+                <a id="documentPreviewDownload" href="#" class="btn btn-outline-dark" download>Скачать файл</a>
+                <button type="button" class="btn btn-dark" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
 @endsection
+
+@push('scripts')
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const modal = document.getElementById('documentPreviewModal');
+    const frame = document.getElementById('documentPreviewFrame');
+    const title = document.getElementById('documentPreviewTitle');
+    const download = document.getElementById('documentPreviewDownload');
+    const loading = document.getElementById('documentPreviewLoading');
+
+    if (!modal || !frame || !title || !download || !loading) {
+        return;
+    }
+
+    modal.addEventListener('show.bs.modal', function (event) {
+        const button = event.relatedTarget;
+        const previewUrl = button ? button.getAttribute('data-preview-url') : '';
+        const downloadUrl = button ? button.getAttribute('data-download-url') : '';
+        const documentTitle = button ? button.getAttribute('data-document-title') : 'Документ';
+
+        title.textContent = documentTitle || 'Документ';
+        download.href = downloadUrl || '#';
+        loading.classList.remove('d-none');
+        frame.src = previewUrl || 'about:blank';
+    });
+
+    frame.addEventListener('load', function () {
+        loading.classList.add('d-none');
+    });
+
+    modal.addEventListener('hidden.bs.modal', function () {
+        frame.src = 'about:blank';
+        download.href = '#';
+        loading.classList.remove('d-none');
+    });
+});
+</script>
+@endpush
