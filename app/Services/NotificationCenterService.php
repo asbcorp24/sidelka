@@ -13,13 +13,15 @@ class NotificationCenterService
     {
         $tasksQuery = $this->tasksQuery($user);
         $notificationsQuery = $this->notificationsQuery($user);
+        $taskCount = (clone $tasksQuery)->count();
+        $notificationCount = (clone $notificationsQuery)->count();
 
         return [
             'tasks' => (clone $tasksQuery)->limit($limit)->get(),
             'notifications' => (clone $notificationsQuery)->limit($limit)->get(),
-            'task_count' => (clone $tasksQuery)->count(),
-            'notification_count' => (clone $notificationsQuery)->count(),
-            'total_count' => (clone $tasksQuery)->count() + (clone $notificationsQuery)->count(),
+            'task_count' => $taskCount,
+            'notification_count' => $notificationCount,
+            'total_count' => $taskCount + $notificationCount,
         ];
     }
 
@@ -69,8 +71,8 @@ class NotificationCenterService
             return route('crm.incidents.index', ['status' => 'open']);
         }
 
-        if ($task->crm_request_id && $user->hasStaffPermission('crm.requests.manage')) {
-            return route('crm.requests.show', $task->crm_request_id);
+        if ($task->crmRequest && $user->hasStaffPermission('crm.requests.manage')) {
+            return route('crm.requests.show', $task->crmRequest);
         }
 
         if ($user->isAdmin() || $user->isCrm()) {
