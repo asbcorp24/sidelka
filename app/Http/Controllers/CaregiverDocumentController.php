@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CrmTask;
 use App\Models\MarketplaceNotification;
 use App\Models\UserDocument;
 use App\Services\CaregiverDocumentService;
@@ -33,8 +34,19 @@ class CaregiverDocumentController extends Controller
             }
         }
 
+        $documents = $query->paginate(40)->withQueryString();
+        $reviewTasks = CrmTask::query()
+            ->with('assignedTo')
+            ->where('source_type', UserDocument::class)
+            ->whereIn('source_id', collect($documents->items())->pluck('id'))
+            ->where('status', 'open')
+            ->latest('id')
+            ->get()
+            ->keyBy('source_id');
+
         return view('crm.caregiver-documents', [
-            'documents' => $query->paginate(40)->withQueryString(),
+            'documents' => $documents,
+            'reviewTasks' => $reviewTasks,
             'stats' => [
                 'expired' => UserDocument::whereHas('user', fn ($q) => $q->where('role', 'caregiver'))->whereDate('expires_at', '<', today())->count(),
                 'expiring' => UserDocument::whereHas('user', fn ($q) => $q->where('role', 'caregiver'))->whereBetween('expires_at', [today(), today()->addDays(30)])->count(),
