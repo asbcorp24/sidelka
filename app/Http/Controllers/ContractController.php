@@ -145,14 +145,32 @@ class ContractController extends Controller
             : 'Документ добавлен.');
     }
 
+    public function previewDocument(Request $request, UserDocument $document): StreamedResponse
+    {
+        $this->authorizeDocumentAccess($request, $document);
+        abort_unless($document->file_path, 404);
+
+        $disk = Storage::disk('public');
+        abort_unless($disk->exists($document->file_path), 404);
+
+        $filename = $document->original_name ?? basename($document->file_path);
+        $mimeType = $document->mime_type ?: $disk->mimeType($document->file_path) ?: 'application/octet-stream';
+
+        return $disk->response(
+            $document->file_path,
+            $filename,
+            [
+                'Content-Type' => $mimeType,
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-store, max-age=0',
+            ],
+            'inline'
+        );
+    }
+
     public function downloadDocument(Request $request, UserDocument $document): StreamedResponse
     {
-        $user = $request->user();
-        $allowed = $user->id === $document->user_id
-            || $user->isAdmin()
-            || $user->hasStaffPermission('crm.documents.manage');
-
-        abort_unless($allowed, 403);
+        $this->authorizeDocumentAccess($request, $document);
         abort_unless($document->file_path, 404);
 
         return Storage::disk('public')->download(
@@ -237,6 +255,16 @@ class ContractController extends Controller
             ],
             'work-act-' . $order->id . '.pdf'
         );
+    }
+
+    private function authorizeDocumentAccess(Request $request, UserDocument $document): void
+    {
+        $user = $request->user();
+        $allowed = $user->id === $document->user_id
+            || $user->isAdmin()
+            || $user->hasStaffPermission('crm.documents.manage');
+
+        abort_unless($allowed, 403);
     }
 
     private function authorizeOrderAccess(Request $request, Order $order): void
