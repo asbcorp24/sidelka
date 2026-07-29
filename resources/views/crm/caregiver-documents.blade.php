@@ -1,6 +1,8 @@
 @extends('layouts.app')
 
-@php($title = 'Документы сиделок')
+@php
+    $title = 'Документы сиделок';
+@endphp
 
 @section('content')
 <div class="container-fluid px-3 px-xl-5 py-4">
