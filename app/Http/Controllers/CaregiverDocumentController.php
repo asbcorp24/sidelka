@@ -2,8 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
+use App\Models\MarketplaceNotification;
 use App\Models\UserDocument;
+use App\Services\CaregiverDocumentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -11,6 +12,10 @@ use Illuminate\View\View;
 
 class CaregiverDocumentController extends Controller
 {
+    public function __construct(private CaregiverDocumentService $documentService)
+    {
+    }
+
     public function index(Request $request): View
     {
         $query = UserDocument::query()
@@ -24,7 +29,7 @@ class CaregiverDocumentController extends Controller
             } elseif ($request->input('status') === 'expiring') {
                 $query->whereBetween('expires_at', [today(), today()->addDays(30)]);
             } elseif ($request->input('status') === 'unverified') {
-                $query->where('verification_status', '!=', 'verified');
+                $query->where('verification_status', '!=', UserDocument::STATUS_VERIFIED);
             }
         }
 
@@ -43,7 +48,11 @@ class CaregiverDocumentController extends Controller
         abort_unless($userDocument->user?->isCaregiver(), 404);
 
         $data = $request->validate([
-            'verification_status' => ['required', Rule::in(['pending', 'verified', 'rejected'])],
+            'verification_status' => ['required', Rule::in([
+                UserDocument::STATUS_PENDING,
+                UserDocument::STATUS_VERIFIED,
+                UserDocument::STATUS_REJECTED,
+            ])],
             'is_required' => ['nullable', 'boolean'],
             'blocks_assignments' => ['nullable', 'boolean'],
             'expires_at' => ['nullable', 'date'],
@@ -56,13 +65,30 @@ class CaregiverDocumentController extends Controller
             'blocks_assignments' => (bool) ($data['blocks_assignments'] ?? false),
             'expires_at' => $data['expires_at'] ?? null,
             'notes' => $data['notes'] ?? null,
-            'verified_at' => $data['verification_status'] === 'verified' ? now() : null,
-            'verified_by_id' => $data['verification_status'] === 'verified' ? $request->user()->id : null,
+            'verified_at' => $data['verification_status'] === UserDocument::STATUS_VERIFIED ? now() : null,
+            'verified_by_id' => $data['verification_status'] === UserDocument::STATUS_VERIFIED ? $request->user()->id : null,
             'reminder_30_at' => null,
             'reminder_14_at' => null,
             'reminder_3_at' => null,
             'expired_task_at' => null,
         ]);
+
+        if (in_array($data['verification_status'], [UserDocument::STATUS_VERIFIED, UserDocument::STATUS_REJECTED], true)) {
+            $this->documentService->completeDocumentTasks($userDocument);
+
+            MarketplaceNotification::create([
+                'user_id' => $userDocument->user_id,
+                'type' => 'document.' . $data['verification_status'],
+                'title' => $data['verification_status'] === UserDocument::STATUS_VERIFIED
+                    ? 'Документ подтверждён'
+                    : 'Документ отклонён',
+                'body' => 'Документ «' . $userDocument->title . '» '
+                    . ($data['verification_status'] === UserDocument::STATUS_VERIFIED
+                        ? 'проверен сотрудником площадки.'
+                        : 'отклонён. Причина: ' . ($data['notes'] ?: 'не указана.')),
+                'data' => ['url' => '/cabinet/caregiver/legal'],
+            ]);
+        }
 
         return back()->with('status', 'Статус документа и правила допуска обновлены.');
     }
