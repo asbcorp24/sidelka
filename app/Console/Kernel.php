@@ -13,6 +13,10 @@ class Kernel extends ConsoleKernel
             ->hourly()
             ->withoutOverlapping();
 
+        $schedule->command('caregivers:assign-document-reviews')
+            ->everyTenMinutes()
+            ->withoutOverlapping();
+
         $schedule->command('caregivers:check-documents')
             ->dailyAt('08:00')
             ->withoutOverlapping();
