@@ -1,6 +1,8 @@
 @extends('layouts.app')
 
-@php($title = $pageTitle ?? 'Суперадмин')
+@php
+    $title = $pageTitle ?? 'Суперадмин';
+@endphp
 
 @section('content')
 <div class="container py-4 py-lg-5">
@@ -10,6 +12,7 @@
             <h1 class="section-title mb-0">{{ $pageTitle ?? 'Суперадмин' }}</h1>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+            <a href="{{ route('help.index', ['role' => 'admin']) }}" class="btn btn-outline-dark rounded-pill px-4">Инструкция администратора</a>
             <a href="{{ route('crm.dashboard') }}" class="btn btn-outline-dark rounded-pill px-4">Открыть CRM</a>
             <a href="{{ route('home') }}" class="btn btn-dark rounded-pill px-4">На сайт</a>
         </div>
