@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Models\UserDocument;
+use App\Services\CaregiverDocumentService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -12,6 +13,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ContractController extends Controller
 {
+    public function __construct(private CaregiverDocumentService $documentService)
+    {
+    }
+
     public function caregiverLegal(Request $request)
     {
         $user = $request->user()->load(['contractProfile', 'documents']);
@@ -115,7 +120,7 @@ class ContractController extends Controller
             $fileSize = $file->getSize();
         }
 
-        $user->documents()->create([
+        $document = $user->documents()->create([
             'document_type' => $selectedType,
             'title' => $data['title'] ?: ($selectedConfig['label'] ?? (UserDocument::TYPE_LABELS[$selectedType] ?? $selectedType)),
             'document_number' => $data['document_number'] ?? null,
@@ -131,7 +136,13 @@ class ContractController extends Controller
             'notes' => $data['notes'] ?? null,
         ]);
 
-        return back()->with('status', 'Документ добавлен.');
+        if ($user->isCaregiver()) {
+            $this->documentService->createReviewTask($document);
+        }
+
+        return back()->with('status', $user->isCaregiver()
+            ? 'Документ добавлен и отправлен сотруднику CRM на проверку.'
+            : 'Документ добавлен.');
     }
 
     public function downloadDocument(Request $request, UserDocument $document): StreamedResponse
