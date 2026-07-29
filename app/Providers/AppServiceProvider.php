@@ -2,26 +2,17 @@
 
 namespace App\Providers;
 
+use App\Services\NotificationCenterService;
 use App\Support\PlatformSettings;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
-    /**
-     * Register any application services.
-     *
-     * @return void
-     */
     public function register()
     {
         $this->app->singleton(PlatformSettings::class, fn () => new PlatformSettings());
     }
 
-    /**
-     * Bootstrap any application services.
-     *
-     * @return void
-     */
     public function boot()
     {
         $settings = app(PlatformSettings::class);
@@ -41,7 +32,6 @@ class AppServiceProvider extends ServiceProvider
         view()->composer('*', function ($view) {
             $settings = app(PlatformSettings::class);
             $seo = $settings->seoPayload();
-
             $routeName = request()->route()?->getName();
 
             $pageTitle = match ($routeName) {
@@ -62,6 +52,14 @@ class AppServiceProvider extends ServiceProvider
                 'page_title' => $pageTitle,
                 'page_description' => $pageDescription,
             ]));
+        });
+
+        view()->composer('layouts.app', function ($view) {
+            $user = auth()->user();
+
+            $view->with('notificationCenter', $user
+                ? app(NotificationCenterService::class)->summary($user)
+                : null);
         });
     }
 }
