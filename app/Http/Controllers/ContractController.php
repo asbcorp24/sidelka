@@ -8,7 +8,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ContractController extends Controller
 {
@@ -134,7 +134,7 @@ class ContractController extends Controller
         return back()->with('status', 'Документ добавлен.');
     }
 
-    public function downloadDocument(Request $request, UserDocument $document): BinaryFileResponse
+    public function downloadDocument(Request $request, UserDocument $document): StreamedResponse
     {
         $user = $request->user();
         $allowed = $user->id === $document->user_id
