@@ -59,6 +59,22 @@ class DocumentReviewNotificationTest extends TestCase
             ->assertSee('Проверить документ сиделки');
 
         $this->actingAs($coordinator)
+            ->get(route('crm.caregiver-documents.index'))
+            ->assertOk()
+            ->assertSee('documentPreviewModal')
+            ->assertSee(route('contracts.document.preview', $document), false);
+
+        $previewResponse = $this->actingAs($coordinator)
+            ->get(route('contracts.document.preview', $document))
+            ->assertOk()
+            ->assertHeader('content-type', 'application/pdf');
+
+        $this->assertStringContainsString(
+            'inline',
+            (string) $previewResponse->headers->get('content-disposition')
+        );
+
+        $this->actingAs($coordinator)
             ->patch(route('crm.caregiver-documents.update', $document), [
                 'verification_status' => UserDocument::STATUS_VERIFIED,
                 'is_required' => 1,
