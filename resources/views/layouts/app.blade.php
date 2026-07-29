@@ -40,6 +40,16 @@
         .news-card { background:linear-gradient(180deg,rgba(255,255,255,.98),rgba(244,248,249,.96));border-radius:24px;border:1px solid rgba(31,111,120,.08); }
         .crm-table td { vertical-align:middle; }
         .crm-overdue { border-left:4px solid #dc3545!important; }
+        .notification-bell-button { color:var(--ink); line-height:1; }
+        .notification-bell-button:hover,.notification-bell-button:focus { color:var(--brand); }
+        .notification-badge { position:absolute; top:-2px; right:-5px; min-width:19px; height:19px; padding:0 5px; border-radius:999px; display:flex; align-items:center; justify-content:center; background:#dc3545; color:#fff; font-size:.68rem; font-weight:800; border:2px solid #fff; }
+        .notification-dropdown { width:min(420px,calc(100vw - 24px)); border:0; border-radius:18px; box-shadow:0 22px 60px rgba(19,46,61,.22); overflow:hidden; }
+        .notification-scroll { max-height:65vh; overflow-y:auto; }
+        .notification-section-title { padding:.65rem 1rem; background:#f5f7f8; color:var(--muted); font-size:.76rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+        .notification-item { padding:.85rem 1rem; background:#fff; }
+        .notification-item:hover { background:#f8fbfb; }
+        .notification-main-link { color:inherit; text-decoration:none; }
+        .notification-overdue { border-left:4px solid #dc3545!important; }
         footer { color:var(--muted); }
     </style>
 </head>
@@ -72,6 +82,7 @@
                         @if(auth()->user()->hasStaffPermission('crm.analytics.view'))<li class="nav-item"><a class="nav-link" href="{{ route('crm.analytics.index') }}">Аналитика</a></li>@endif
                         @if(auth()->user()->isAdmin())<li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('admin.dashboard') }}">Админка</a></li>@endif
                     @endif
+                    @include('layouts.notification-bell')
                     <li class="nav-item"><form action="{{ route('logout') }}" method="POST" class="d-inline">@csrf<button type="submit" class="btn btn-outline-dark rounded-pill px-4">Выход</button></form></li>
                 @else
                     <li class="nav-item"><a class="btn btn-dark rounded-pill px-4" href="{{ route('login') }}">Вход</a></li>
