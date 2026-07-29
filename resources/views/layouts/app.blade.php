@@ -63,6 +63,7 @@
                 @guest
                     <li class="nav-item"><a class="nav-link" href="{{ route('caregivers.index') }}">Каталог сиделок</a></li>
                     <li class="nav-item"><a class="nav-link" href="{{ route('news.index') }}">Новости</a></li>
+                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('help.index') ? 'fw-bold' : '' }}" href="{{ route('help.index') }}">Помощь</a></li>
                 @endguest
                 @auth
                     @if(auth()->user()->isClient())
@@ -82,6 +83,7 @@
                         @if(auth()->user()->hasStaffPermission('crm.analytics.view'))<li class="nav-item"><a class="nav-link" href="{{ route('crm.analytics.index') }}">Аналитика</a></li>@endif
                         @if(auth()->user()->isAdmin())<li class="nav-item"><a class="btn btn-outline-dark rounded-pill px-4" href="{{ route('admin.dashboard') }}">Админка</a></li>@endif
                     @endif
+                    <li class="nav-item"><a class="nav-link {{ request()->routeIs('help.index') ? 'fw-bold' : '' }}" href="{{ route('help.index') }}">Помощь</a></li>
                     @include('layouts.notification-bell')
                     <li class="nav-item"><form action="{{ route('logout') }}" method="POST" class="d-inline">@csrf<button type="submit" class="btn btn-outline-dark rounded-pill px-4">Выход</button></form></li>
                 @else
@@ -114,9 +116,12 @@
 </main>
 
 <footer class="container py-4 border-top">
-    <div class="d-flex flex-column flex-lg-row justify-content-between gap-2">
+    <div class="d-flex flex-column flex-lg-row justify-content-between gap-2 align-items-lg-center">
         <span>Сервис подбора сиделок с безопасной оплатой, календарем смен и отзывами.</span>
-        <span>Разовые, срочные и постоянные заказы с актами, журналами и контролем безопасности.</span>
+        <div class="d-flex gap-3 flex-wrap">
+            <a href="{{ route('help.index') }}" class="text-secondary">Помощь и инструкции</a>
+            <span>Разовые, срочные и постоянные заказы с актами, журналами и контролем безопасности.</span>
+        </div>
     </div>
 </footer>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
