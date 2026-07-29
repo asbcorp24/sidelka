@@ -20,6 +20,10 @@
         </form>
     </div>
 
+    <div class="alert alert-info rounded-4">
+        Проверять и подтверждать документы могут сотрудники с правом «Документы и допуски сиделок»: координатор, супервайзер, руководитель и администратор. Новая задача автоматически назначается наименее загруженному сотруднику.
+    </div>
+
     <div class="row g-3 mb-4">
         <div class="col-md-4"><div class="metric"><div class="value text-danger">{{ $stats['expired'] }}</div><div>Просрочено</div></div></div>
         <div class="col-md-4"><div class="metric"><div class="value text-warning">{{ $stats['expiring'] }}</div><div>Истекает за 30 дней</div></div></div>
@@ -28,7 +32,10 @@
 
     <div class="card-soft p-4">
         @forelse($documents as $document)
-            @php($expired = $document->isExpired())
+            @php
+                $expired = $document->isExpired();
+                $reviewTask = $reviewTasks->get($document->id);
+            @endphp
             <form action="{{ route('crm.caregiver-documents.update', $document) }}" method="POST" class="border rounded-4 p-3 mb-3 {{ $expired ? 'border-danger border-2' : '' }}">
                 @csrf
                 @method('PATCH')
@@ -43,6 +50,12 @@
                         <div class="small text-secondary mt-1">
                             Выдан: {{ $document->issued_at?->format('d.m.Y') ?: 'не указано' }}
                         </div>
+                        @if($reviewTask)
+                            <div class="small mt-1"><strong>Проверяет:</strong> {{ $reviewTask->assignedTo?->name ?: 'ответственный ещё не назначен' }}</div>
+                        @endif
+                        @if($document->verifiedBy)
+                            <div class="small text-success mt-1"><strong>Подтвердил:</strong> {{ $document->verifiedBy->name }} · {{ $document->verified_at?->format('d.m.Y H:i') }}</div>
+                        @endif
                         @if($document->file_path)
                             <a href="{{ route('contracts.document.download', $document) }}" class="btn btn-sm btn-outline-dark rounded-pill mt-2">Открыть скан</a>
                         @else
