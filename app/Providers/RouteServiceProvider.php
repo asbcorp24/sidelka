@@ -18,6 +18,11 @@ class RouteServiceProvider extends ServiceProvider
     {
         $this->configureRateLimiting();
 
+        // Все маршруты с параметром {order} используют числовой ID заказа.
+        // Это не позволяет статическим адресам вроде /orders/create
+        // ошибочно попадать в маршрут /orders/{order}.
+        Route::pattern('order', '[0-9]+');
+
         $this->routes(function () {
             Route::prefix('api')
                 ->middleware('api')
